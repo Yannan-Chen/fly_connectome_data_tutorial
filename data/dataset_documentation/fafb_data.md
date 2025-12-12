@@ -13,7 +13,8 @@ sjcabs_data/
 │   ├── fafb_783_synapses.feather 
 │   ├── fafb_783_dcv_soma.feather 
 │   ├── fafb_783_dcv_cell.feather 
-│   └── fafb_783_skeletons_in_banc_space.zip      
+│   └── fafb_783_skeletons_in_banc_space.zip
+│   └── fafb_783_skeletons_in_fafb_space.zip            
 └── ...
 ```
 
@@ -99,17 +100,15 @@ synapses - each row is a unique synaptic connection
 edgelist_simple - each row is a unique neuron-neuron connection
 ========================================================================================
 
-**pre**     :   the neuron ID for the source (i.e. upstream, presynaptic) neuron. For FAFB this is a root_id for BANC, root_783 for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
+**pre**     :   the neuron ID for the source (i.e. upstream, presynaptic) neuron. For banc this is a root_id for BANC, root_746 for banc, cell_id for FANC and bodyid for MANC and Hemibrain.
 
-**post**    :   the neuron ID for the target (i.e. downstream, pesynaptic) neuron. For FAFB this is a root_id for BANC, root_783 for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
+**post**    :   the neuron ID for the target (i.e. downstream, pesynaptic) neuron. For banc this is a root_id for BANC, root_746 for banc, cell_id for FANC and bodyid for MANC and Hemibrain.
 
-**count**   :   the number of synaptic links that connect pre to post. For FAFB a cleft_score threshold of 50 has been applied.
+**count**   :   the number of synaptic links that connect pre to post. For banc a cleft_score threshold of 50 has been applied.
 
 **norm**    :   the normalised weight of a connection, this is count/post_count, where post_count are the total number of inputs to the target neuron (post).
 
-**pre_count**  :   the total number of oututs from the target neuron (post) NOT the source neuron (pre). *I understand this is a little confusing, and will seek to change the column names to use pre/post for synapses and sourcd/target for neurons in the future.*
-
-**post_count** :   the total number of inputs to the target neuron (post).
+**total_input** :   the total number of inputs to the target neuron (post).
 
 
 edgelist - each row is a unique compartment-compartment connection
