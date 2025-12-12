@@ -8,6 +8,17 @@ This tutorial provides foundational skills for loading, analyzing, and visualizi
 
 ---
 
+## Quick Links
+
+- [Connectome Datasets](#connectome-datasets) - BANC, Male CNS, FAFB, MANC, Hemibrain
+- [Analysis Tools](#analysis-tools) - Python and R packages with installation guides
+- [Data Organization](#data-organization) - Google Drive structure and file types
+- [Tutorial Path](#tutorial-path) - What you'll learn (2 hours)
+- [Getting Started](#getting-started) - Installation and first steps
+- [Citation](#citation) - How to cite these datasets
+
+---
+
 ## Connectome Datasets
 
 We focus primarily on two FlyWire datasets—**BANC** and **FAFB**—while also providing access to MANC, Hemibrain, and Male CNS. All datasets have been harmonized to use the unified metadata schema we used in the **BANC** project, enabling cross-dataset comparisons. Possible metadata entries given here: [data/meta_data_entries](data/meta_data_entries.csv).
@@ -18,32 +29,32 @@ We focus primarily on two FlyWire datasets—**BANC** and **FAFB**—while also 
 The first synapse-resolution connectome spanning the both brain and ventral nerve cord. Contains ~114,000 neurons with ~108 million synaptic connections. A female fly. Missing first optic relay, the lamina and retina.
 
 - **Explore:** [Codex](https://codex.flywire.ai/?dataset=banc)
-- **Publication:** [Eckstein et al. (2025)](https://pubmed.ncbi.nlm.nih.gov/40766407/) bioRxiv
+- **Publication:** [Bates et al. (2025)](https://pubmed.ncbi.nlm.nih.gov/40766407/) bioRxiv
 - **Documentation:** [data/dataset_documentation/banc_data.md](data/dataset_documentation/banc_data.md)
 
 ### Male CNS (Central Nervous System)
-Complete male CNS connectome with 166,691 neurons spanning brain and ventral nerve cord. Includes fruitless and doublesex expression data for studying sex-specific circuits. A male fly. No retina.
+Complete male CNS connectome with 166,691 neurons spanning brain and ventral nerve cord. Includes fruitless and doublesex expression data for studying sex-specific circuits. A male fly. Missing retina.
 
 - **Explore:** [Codex](https://codex.flywire.ai/?dataset=mcns) | [neuPrint](https://neuprint.janelia.org/?dataset=male-cns:v0.9)
-- **Publication:** [bioRxiv preprint (2025)](https://www.biorxiv.org/content/10.1101/2025.10.09.680999v1)
+- **Publication:** [Berg et al. (2025)](https://www.biorxiv.org/content/10.1101/2025.10.09.680999v1) bioRxiv
 - **Documentation:** [data/dataset_documentation/malecns_data.md](data/dataset_documentation/malecns_data.md)
 
 ### FAFB (Full Adult Fly Brain)
-Complete adult female fly brain connectome via the FlyWire project. Contains ~139,000 neurons spanning all brain regions including detailed annotations of 8,453 cell types. A female fly. No ventral nerve cord.
+Complete adult female fly brain connectome via the FlyWire project. Contains ~139,000 neurons spanning all brain regions including detailed annotations of 8,453 cell types. A female fly. Missing ventral nerve cord, lamina and retina.
 
 - **Explore:** [Codex](https://codex.flywire.ai/?dataset=fafb)
 - **Publication:** [Dorkenwald et al. (2024)](https://www.nature.com/articles/s41586-024-07686-5) Nature; [Schlegel et al. (2024)](https://www.nature.com/articles/s41586-024-07686-5) Nature
 - **Documentation:** [data/dataset_documentation/fafb_data.md](data/dataset_documentation/fafb_data.md)
 
 ### MANC (Male Adult Nerve Cord)
-First complete nerve cord connectome with ~23,000 neurons. A male fly. No brain.
+First complete nerve cord connectome with ~23,000 neurons. A male fly. Missing brain.
 
 - **Explore:** [neuPrint](https://neuprint.janelia.org/?dataset=manc)
 - **Publication:** [Takemura et al. (2024)](https://elifesciences.org/reviewed-preprints/97769) eLife
 - **Documentation:** [data/dataset_documentation/manc_data.md](data/dataset_documentation/manc_data.md)
 
 ### Hemibrain
-Dense reconstruction of approximately half the central brain (~25,000 neurons). Includes mushroom body learning circuits and central complex navigation circuits. A female fly. No ventral nerve cord.
+Dense reconstruction of approximately half the central brain (~25,000 neurons). Includes mushroom body learning circuits and central complex navigation circuits. A female fly. Missing ventral nerve cord and approximately half of the brain.
 
 - **Explore:** [neuPrint](https://neuprint.janelia.org/?dataset=hemibrain:v1.2.1)
 - **Publication:** [Scheffer et al. (2020)](https://elifesciences.org/articles/57443) eLife
@@ -54,14 +65,30 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 ## Analysis Tools
 
 ### Python
+**Installation guide:** [Setting up Python for connectomics](https://navis-org.github.io/neuropython2024/preparing/)
+
 - **[navis](https://navis.readthedocs.io/)** - Neuron analysis and visualization (works with all datasets)
+- **[skeletor](https://github.com/navis-org/skeletor)** - Mesh skeletonization
 - **[fafbseg-py](https://github.com/navis-org/fafbseg-py)** - FlyWire/FAFB-specific tools
+- **[navis-flybrains](https://github.com/navis-org/navis-flybrains)** - Coordinate transforms and template brains
 - **[Influence score calculator](https://zenodo.org/records/17693838)** - Quantify influence between sensory and effector neurons
 
 ### R
+**Installation guide:** [Installing the natverse](https://natverse.org/install/)
+
+Core packages:
 - **[natverse](http://natverse.org/)** - NeuroAnatomy Toolbox ecosystem (works with all datasets)
+- **[neuprintr](https://github.com/natverse/neuprintr)** - neuPrint client for querying connectome databases
+- **[nat.flybrains](https://github.com/natverse/nat.flybrains)** - Coordinate transforms and template brains
+
+Dataset-specific packages:
 - **[bancr](https://github.com/flyconnectome/bancr)** - BANC-specific client
 - **[fafbseg](https://github.com/natverse/fafbseg)** - FlyWire/FAFB-specific tools
+- **[hemibrainr](https://github.com/natverse/hemibrainr)** - Hemibrain-specific tools
+- **[malevnc](https://github.com/natverse/malevnc)** - Male VNC (MANC) specific tools
+- **[malecns](https://github.com/flyconnectome/malecns)** - Male CNS specific tools
+
+Analysis tools:
 - **[influencer](https://github.com/natverse/influencer/)** - Influence score analysis
 
 ---
@@ -171,7 +198,7 @@ If you use these datasets in your work, please cite the original publications:
 
 **Male CNS:** Berg, S., Beckett, I.R., Costa, M., Schlegel, P., Januszewski, M., Marin, E.C., Bates, A.S., et al. (2025). Sexual dimorphism in the complete connectome of the Drosophila male central nervous system. *bioRxiv*, 2025.10.09.680999. https://doi.org/10.1101/2025.10.09.680999
 
-**Neurotransmitter Predictions:** Eckstein and Bates et al.
+**Neurotransmitter Predictions:** Eckstein, N., Bates, A.S., Champion, A., Du, M., Yin, Y., Schlegel, P., Lu, A.K.Y., et al. (2024). Neurotransmitter classification from electron microscopy images at synaptic sites in Drosophila melanogaster. *Cell*, 187(10), 2574-2594.e23. https://doi.org/10.1016/j.cell.2024.03.016
 
 ---
 
