@@ -21,7 +21,7 @@ This tutorial provides foundational skills for loading, analyzing, and visualizi
 
 ## Connectome Datasets
 
-We focus primarily on two FlyWire datasets—**BANC** and **FAFB**—while also providing access to MANC, Hemibrain, and Male CNS. All datasets have been harmonized to use the unified metadata schema we used in the **BANC** project, enabling cross-dataset comparisons. Possible metadata entries given here: [data/meta_data_entries](data/meta_data_entries.csv).
+We focus primarily on two FlyWire datasets—**BANC** and **FAFB**—while also providing access to MANC, Hemibrain, and Male CNS. All datasets have been harmonized to use the unified metadata schema we used in the **BANC** project, enabling cross-dataset comparisons. Possible metadata entries given here: [data/meta_data_entries](data/meta_data_entries.csv). You can see renderings of neuronal meshes from the BANC, FAFB, MANC and HemiBrain datasets in neuroglancer [here](https://http//ng.banc.community/view).
 
 ### BANC (Brain and Nerve Cord)
 **Primary dataset for this tutorial**
@@ -192,7 +192,9 @@ This tutorial follows a progressive learning path. It is designed to take about 
 
 ## Citation
 
-If you use these datasets in your work, please cite the original publications:
+The Google Bucket contains a curation of connectome data by Alexander Bates. The purpose of the curation was to make it easy to work with all major connectome datasets together, e.g. standardising column names and meta data entires. You are welcome to use this data curation in your own work! Just let Alex know!
+
+More generally, if you use these datasets in your work, please cite the original publications:
 
 **BANC:** Bates, A.S., Phelps, J.S., Kim, M., Yang, H.H., Matsliah, A., Ajabi, Z., Perlman, E., et al. (2025). Distributed control circuits across a brain-and-cord connectome. *bioRxiv*, 2025.07.31.667571. https://doi.org/10.1101/2025.07.31.667571
 
