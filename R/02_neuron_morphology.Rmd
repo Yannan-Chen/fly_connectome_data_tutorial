@@ -88,6 +88,17 @@ We can plot input synapses in navy, and output in red:
 ```
 ```
 
+## Read neuropil meshes
+
+In our `obj` folder, we have some useful neuroaatomical objects!
+
+Let's fetch both the BANC ventral nerve cord neuropil, and the leg neuropil.
+
+We can show them over our neurons, with a little transparency.
+
+```
+```
+
 ## NBLAST
 
 Now that we have seen how to visualise the skeleton of one neuron, let's grab all of our neurons from this neuropil and assess how similar they are.
@@ -117,12 +128,22 @@ You can try playing wit the number of clusters, `k`.
 
 Cool! What do you think all of these neurons do?
 
+## New dataset
 
-## Your Turn: Compare Datasets
+Let's repeat what we just did, but with the maleCNS dataset, and reading from the banc_space .zip
 
-Now try this analysis yourself with a different dataset and/or cut out!
+```
+```
 
-**Exercise:** Switch to the `malecns` dataset and compare results with BANC.
+Now we can plot our neurons together with the BANC ones!
+
+```
+```
+
+## Your Turn: New subset
+
+Now try this analysis yourself with a different subset, e.g. antennal lobe
+
 
 ## Extention: axon-dendrite splits
 
@@ -136,7 +157,57 @@ The `label` column in the underlying `.swc` files gives the compartment.
 
 In addition, the `pre_label` and `post_label` columns in our synapse tables give compartments.
 
-Let's read in some maleCNS data, and visualise neurons
+Let's read in some maleCNS data, and visualise neurons. 
+
+We will look at the neurons DNa01. To do this we must:
+
+1. Read the meta file, filter for DNa01 on `cell_type`
+2. Find its IDs, and read them from the `.swc` file `.zip` archive
+3. Read these skeletons in, then subset by "label"
+4. Visualise these compartments in different colors
+
+Let's use four colours:
+
+blue = dendrite
+green = primary dendrite (linker)
+orange = axon
+purple = primary neurite tract (cell body fiber tract)
+
+```
+```
+
+We can also see the synapses by this split. 
+
+Let's read the .feather file in our data subset, and select just those synapses related to our neurons.
+
+Let's use four colours:
+
+navy = input synapse, dendrite
+cyan = input synapse, axon
+pink = output synapse, dendrite
+red = output synapse, axon
+
+```
+````
+
+
+Once you are done with 01, let's work on tutorial 02. I have similar scripts for working with morphologies with the natverse, here: /Users/abates/projects/natverse/nat.examples.
+Please start by exploring this repository, to get a sense of the sort of plotting and NBLAST code we are going to want to employ. Also see: https://github.com/natverse/nat.ggplot?tab=readme-ov-file,
+and https://github.com/natverse/nat.nblast. Now, look at the 02 .Rmd file I have made. I have laid out the plan for the tutorial. Can you fill in the code, and lightly update the test for consistency,
+including helpful hyperlinks, and increased clarity. We want to have the same style as the 01 .Rmd file. We want to generally show the user how to make a rgl plot (plot3d) and plotly plots, and one example of a nat.ggplot. 
+When looking for the leg neuropil obj file, use this regex search: "^LegNp\\(T1\\)|T1|^ProNM-T1|^LNp_T3". When you have the draft, execute the knit to html, observe errors, and correct based on observed errors. Remember we want images output to our images/ folder, as we had asked for tutorial 01.
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
