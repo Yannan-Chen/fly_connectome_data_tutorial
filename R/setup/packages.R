@@ -10,6 +10,8 @@ packages_core <- c(
   "ggplot2",    # Plotting
   "patchwork",  # Combining plots
   "nat",        # Neuron morphology analysis
+  "nat.nblast", # compare neuron morphologies
+  "plotly",     # interactive plots
   "duckdb"      # SQL database for efficient Parquet queries
 )
 
@@ -27,8 +29,17 @@ library(ggplot2)
 library(patchwork)
 library(nat)
 library(duckdb)
+library(plotly)
+library(nat.nblast)
+library(doMC)
 
 cat("✓ Core packages loaded\n")
+
+# Set up parallelisation
+numCores <- parallel::detectCores()
+cores <- max(1,numCores-1)
+registerDoMC(cores)
+cat("Using ", cores, " cores")
 
 # Python/GCS packages (conditional)
 # ----------------------------------
