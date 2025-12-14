@@ -19,9 +19,17 @@ This tutorial provides foundational skills for loading, analysing, and visualisi
 
 ---
 
+<p align="center">
+  <img src="inst/images/banner.png" alt="Fly connectome datasets" width="90%">
+</p>
+
 ## Connectome Datasets
 
 We focus primarily on two FlyWire datasets—**BANC** and **FAFB**—while also providing access to MANC, Hemibrain, and Male CNS. All datasets have been harmonized to use the unified metadata schema we used in the **BANC** project, enabling cross-dataset comparisons. Possible metadata entries given here: [data/meta_data_entries](data/meta_data_entries.csv). You can see renderings of neuronal meshes from the BANC, FAFB, MANC and HemiBrain datasets in neuroglancer [here](https://http//ng.banc.community/view).
+
+<p align="center">
+  <img src="inst/images/banc.png" alt="BANC connectome" width="80%">
+</p>
 
 ### BANC (Brain and Nerve Cord)
 **Primary dataset for this tutorial**
@@ -32,12 +40,20 @@ The first synapse-resolution connectome spanning the both brain and ventral nerv
 - **Publication:** [Bates et al. (2025)](https://pubmed.ncbi.nlm.nih.gov/40766407/) bioRxiv
 - **Documentation:** [data/dataset_documentation/banc_data.md](data/dataset_documentation/banc_data.md)
 
+<p align="center">
+  <img src="inst/images/malecns.png" alt="Male CNS connectome" width="80%">
+</p>
+
 ### Male CNS (Central Nervous System)
 Complete male CNS connectome with 166,691 neurons spanning brain and ventral nerve cord. Includes fruitless and doublesex expression data for studying sex-specific circuits. A male fly. Missing retina.
 
 - **Explore:** [Codex](https://codex.flywire.ai/?dataset=mcns) | [neuPrint](https://neuprint.janelia.org/?dataset=male-cns:v0.9)
 - **Publication:** [Berg et al. (2025)](https://www.biorxiv.org/content/10.1101/2025.10.09.680999v1) bioRxiv
 - **Documentation:** [data/dataset_documentation/malecns_data.md](data/dataset_documentation/malecns_data.md)
+
+<p align="center">
+  <img src="inst/images/fafb.png" alt="FAFB connectome" width="80%">
+</p>
 
 ### FAFB (Full Adult Fly Brain)
 Complete adult female fly brain connectome via the FlyWire project. Contains ~139,000 neurons spanning all brain regions including detailed annotations of 8,453 cell types. A female fly. Missing ventral nerve cord, lamina and retina.
@@ -46,12 +62,20 @@ Complete adult female fly brain connectome via the FlyWire project. Contains ~13
 - **Publication:** [Dorkenwald et al. (2024)](https://www.nature.com/articles/s41586-024-07686-5) Nature; [Schlegel et al. (2024)](https://www.nature.com/articles/s41586-024-07686-5) Nature
 - **Documentation:** [data/dataset_documentation/fafb_data.md](data/dataset_documentation/fafb_data.md)
 
+<p align="center">
+  <img src="inst/images/manc.png" alt="MANC connectome" width="80%">
+</p>
+
 ### MANC (Male Adult Nerve Cord)
 First complete nerve cord connectome with ~23,000 neurons. A male fly. Missing brain.
 
 - **Explore:** [neuPrint](https://neuprint.janelia.org/?dataset=manc)
 - **Publication:** [Takemura et al. (2024)](https://elifesciences.org/reviewed-preprints/97769) eLife
 - **Documentation:** [data/dataset_documentation/manc_data.md](data/dataset_documentation/manc_data.md)
+
+<p align="center">
+  <img src="inst/images/hemibrain.png" alt="Hemibrain connectome" width="80%">
+</p>
 
 ### Hemibrain
 Dense reconstruction of approximately half the central brain (~25,000 neurons). Includes mushroom body learning circuits and central complex navigation circuits. A female fly. Missing ventral nerve cord and approximately half of the brain.
@@ -64,6 +88,10 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 
 ## Analysis Tools
 
+<p align="center">
+  <img src="inst/images/navis.png" alt="navis - neuron analysis and visualization" width="80%">
+</p>
+
 ### Python
 **Installation guide:** [Setting up Python for connectomics](https://navis-org.github.io/neuropython2024/preparing/)
 
@@ -72,6 +100,10 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 - **[fafbseg-py](https://github.com/navis-org/fafbseg-py)** - FlyWire/FAFB-specific tools
 - **[navis-flybrains](https://github.com/navis-org/navis-flybrains)** - Coordinate transforms and template brains
 - **[Influence score calculator](https://zenodo.org/records/17693838)** - Quantify influence between sensory and effector neurons
+
+<p align="center">
+  <img src="inst/images/natverse_promotion.png" alt="natverse - NeuroAnatomy Toolbox for R" width="80%">
+</p>
 
 ### R
 **Installation guide:** [Installing the natverse](https://natverse.org/install/)
@@ -212,31 +244,31 @@ gsutil ls -lh gs://brain-and-nerve-cord_exports/sjcabs_data/banc/banc_746_synaps
 This tutorial follows a progressive learning path. It is designed to take about 2 hours. 
 
 ### 1. Data access
-- Find and read our data files, which are stored as .zip or .feather
+- Find and read our data files, which are stored as .swc (morphologies), .parquet (synapses) or .feather (meta, connectivity)
 - Test you can do this across multiple datasets.
 
 ### 2. Neuronal Morphology
 - Load and visualise 3D neuron skeletons
 - Transform coordinates between native dataset spaces and BANC space
-- Understand morphological features (dendrites, axons, branch points)
-
-### 3. Synapse Analysis
-- Load and map individual synapse locations
 - Visualise synaptic distributions along neurites
-- Determine axon/dendrite compartments using flow centrality ([navis](https://navis.readthedocs.io/en/latest/source/tutorials/morph_analysis.html) | [natverse](http://natverse.org/nat/reference/flow.centrality.html) implementations)
-- Analyse neurotransmitter predictions per synapse
+- 
 
-### 4. Connectivity Networks
+### 3. Connectivity Networks
 - Load and query edgelists (connectivity matrices)
 - Build and visualise network graphs
 - Calculate network properties (hubs, modules, motifs)
 - Identify pathways between neuron populations
 
-### 5. Influence Quantification
+### 4. Influence Quantification
 - Calculate influence scores from sensory neurons to effector neurons
 - Understand multi-hop indirect influences through network paths
 - Compare influence patterns across datasets
 - Relate structural connectivity to functional impact
+
+### Extention 1: Axon-dendrite splits
+- Understand morphological features (dendrites, axons, branch points)
+- Determine axon/dendrite compartments using flow centrality ([navis](https://navis.readthedocs.io/en/latest/source/tutorials/morph_analysis.html) | [natverse](http://natverse.org/nat/reference/flow.centrality.html) implementations)
+
 
 ---
 
@@ -295,3 +327,7 @@ More generally, if you use these datasets in your work, please cite the original
 
 **Workshop:** [SJCABS Winter School](https://sjcabs.com/)
 **Year:** 2025
+
+<p align="center">
+  <img src="inst/images/flywire_sterling_gallery_dm4.png" alt="FlyWire visualization" width="90%">
+</p>

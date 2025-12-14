@@ -1,0 +1,609 @@
+---
+title: "Tutorial 01: Data Access"
+author: "Alexander Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+
+# Dataset selection - change this to work with different datasets
+# Options: "banc_746", "fafb_783", "manc_121", "hemibrain_121", "malecns_09"
+dataset <- "banc_746"
+dataset_id <- "banc_746_id"
+
+# Data location - can be GCS bucket or local path
+# Option 1 (GCS - default): Access data directly from Google Cloud Storage
+data_path <- "gs://brain-and-nerve-cord_exports/sjcabs_data"
+
+# Option 2 (Local): Use local copy if you've downloaded the data with gsutil
+# data_path <- "/path/to/local/sjcabs_data"
+# Example: data_path <- "~/data/sjcabs_data"
+
+# Detect if using GCS or local path
+use_gcs <- grepl("^gs://", data_path)
+
+# Setup image output directory
+img_dir <- "images/tutorial_01"
+if (!dir.exists(img_dir)) {
+  dir.create(img_dir, recursive = TRUE)
+}
+
+# Helper function to save plots
+save_plot <- function(plot_obj, name, width = 10, height = 6) {
+  filename <- file.path(img_dir, paste0(name, ".png"))
+  ggsave(filename, plot_obj, width = width, height = height, dpi = 300, bg = "white")
+}
+
+# Load packages and helper functions
+source("setup/packages.R")
+source("setup/functions.R")
+```
+
+## Introduction
+
+This tutorial covers data access to a pre-prepared curation of connectome data for the major *Drosophila* connectome projects. Our curated data includes:
+
+- **Whole-system datasets**: [maleCNS](../data/dataset_documentation/malecns_data.md), [BANC](../data/dataset_documentation/banc_data.md) (brain + ventral nerve cord)
+- **Brain-only datasets**: [FAFB](../data/dataset_documentation/fafb_data.md), [Hemibrain](../data/dataset_documentation/hemibrain_data.md)
+- **VNC-only dataset**: [MANC](../data/dataset_documentation/manc_data.md)
+
+**Currently working with dataset:** `r dataset`
+**Data location:** `r data_path` `r if(use_gcs) "(Google Cloud Storage)" else "(Local)"`
+
+## Setup Data Access
+
+### For GCS Access
+
+If using Google Cloud Storage (`data_path` starts with `gs://`), we use Python's `gcsfs` library (via `reticulate`) to stream files directly into R memory. This approach:
+
+- Works seamlessly with authenticated buckets
+- Streams data directly into memory (minimal disk I/O)
+- Handles SSL/TLS properly when using conda environments
+- Integrates well with Arrow for efficient data parsing
+
+**Authentication required:** Before running this tutorial with GCS, authenticate with Google Cloud:
+
+```bash
+# Install gcloud CLI if you haven't already:
+# https://cloud.google.com/sdk/docs/install
+
+# Authenticate with your Google account
+gcloud auth application-default login
+
+# Follow the prompts in your browser to authenticate
+```
+
+This creates credentials that `gcsfs` will use automatically.
+
+### For Local Access
+
+If using a local path, data is read directly from disk using Arrow - no additional setup required!
+
+## R Package Setup
+
+Packages are loaded from `packages.R`:
+
+```{r packages}
+# Core packages loaded: arrow, tidyverse, ggplot2, patchwork
+# (See packages.R for details)
+
+# Setup GCS access if needed (using custom setup_gcs_access() function)
+if (use_gcs) {
+  setup_gcs_access()
+}
+
+# Set ggplot theme for aesthetic plots
+theme_set(theme_minimal(base_size = 12) +
+          theme(
+            plot.title = element_text(face = "bold", size = 14),
+            plot.subtitle = element_text(size = 11),
+            axis.text = element_text(size = 10),
+            legend.position = "right",
+            panel.grid.minor = element_blank()
+          ))
+```
+
+## Data Location Options
+
+This tutorial supports two data access modes:
+
+### Option 1: Direct GCS Access (Default)
+Access data directly from Google Cloud Storage - no manual download required!
+- **Pros:** No local storage needed, always up-to-date
+- **Cons:** Slower (3-5 min for large files), requires authentication & internet
+
+**GCS bucket location:** `gs://brain-and-nerve-cord_exports/sjcabs_data/`
+
+### Option 2: Local Access (Faster for Repeated Use)
+Download data once with `gsutil`, then access locally:
+
+```bash
+# Download specific dataset (e.g., BANC metadata + synapses)
+gsutil -m cp gs://brain-and-nerve-cord_exports/sjcabs_data/banc/banc_746_meta.feather ~/data/sjcabs_data/banc/
+gsutil -m cp gs://brain-and-nerve-cord_exports/sjcabs_data/banc/banc_746_synapses.parquet ~/data/sjcabs_data/banc/
+
+# Or download entire dataset directory
+gsutil -m cp -r gs://brain-and-nerve-cord_exports/sjcabs_data/banc ~/data/sjcabs_data/
+
+# Or download all datasets (~500 GB total)
+gsutil -m cp -r gs://brain-and-nerve-cord_exports/sjcabs_data ~/data/
+```
+
+Then update the setup chunk:
+```r
+data_path <- "~/data/sjcabs_data"  # Use your local path
+```
+
+**Pros:** Much faster (seconds instead of minutes), Parquet lazy loading still works!
+**Cons:** Requires ~50-100 GB disk space per dataset
+
+**Note:** Even with local files, Parquet's lazy loading means you don't need to load entire files into RAM!
+
+### Available Datasets
+
+```bash
+gs://brain-and-nerve-cord_exports/sjcabs_data/banc/
+gs://brain-and-nerve-cord_exports/sjcabs_data/fafb/
+gs://brain-and-nerve-cord_exports/sjcabs_data/manc/
+gs://brain-and-nerve-cord_exports/sjcabs_data/hemibrain/
+gs://brain-and-nerve-cord_exports/sjcabs_data/malecns/
+```
+
+## Reading Connectome Data
+
+### Understanding the File Formats
+
+Our data files use two Apache Arrow formats:
+- **Feather** (`.feather`) for metadata - smaller files (~10 MB), loaded entirely into memory
+- **Parquet** (`.parquet`) for synapses - large files (4-15 GB), supports lazy loading and predicate pushdown
+
+**Why Parquet for synapses?**
+- ✓ Column selection: download only needed columns
+- ✓ Row filtering: filter on the server before downloading
+- ✓ Compression: smaller file sizes
+- ✓ Efficient for analytical queries on large datasets
+
+### Setup File Paths and GCS Filesystem
+
+Setup paths and GCS filesystem (if needed):
+
+```{r setup_paths}
+# Setup GCS filesystem if using GCS (using custom setup_gcs_filesystem() function)
+gcs_fs <- NULL
+if (use_gcs) {
+  gcs_fs <- setup_gcs_filesystem()
+}
+
+# Construct file paths using custom construct_path() function
+# Meta files are Feather, synapse files are Parquet
+meta_path <- construct_path(data_path, dataset, "meta")
+synapse_path <- construct_path(data_path, dataset, "synapses")
+
+cat("Metadata path:", meta_path, "\n")
+cat("Synapse path:", synapse_path, "\n")
+```
+
+### Example: Loading and Filtering Kenyon Cells
+
+Our meta data follows a hierarchical scheme (i.e. `flow`, `super_class`, `cell_class`, `cell_sub_class`, `cell_type`), with additional non-hierarchical labels (e.g. `neurotransmitter_predicted`, `nerve`, `hemilineage`).
+
+<p align="center">
+  <img src="../inst/images/meta_data_hierarchy_2.png" alt="Meta data hierarchy" width="80%">
+</p>
+
+[Kenyon cells](https://en.wikipedia.org/wiki/Kenyon_cell) are the principal neurons of the insect [mushroom body](https://en.wikipedia.org/wiki/Mushroom_bodies), forming parallel pathways for associative memory. They integrate multi-sensory (but mostly olfactory) information and can number in the thousands per fly brain.
+
+Let's load the metadata and filter for Kenyon cells:
+
+```{r lazy_kenyon}
+# Read metadata into memory (using custom read_feather_smart() function)
+meta_full <- read_feather_smart(meta_path, gcs_filesystem = gcs_fs)
+
+# Filter for Kenyon cells
+kenyon_cells <- meta_full %>%
+  filter(str_detect(cell_class, "kenyon_cell"))
+
+cat("Found", nrow(kenyon_cells), "Kenyon cells in", dataset, "\n")
+head(kenyon_cells)
+```
+
+### Load Complete Metadata
+
+For metadata (~10 MB), we can load the entire dataset into memory:
+
+```{r load_meta}
+# Use the metadata we already loaded
+meta <- meta_full
+
+cat("Dataset:", dataset, "\n")
+cat("Total neurons:", nrow(meta), "\n")
+cat("Metadata columns:", ncol(meta), "\n\n")
+
+# Show column names
+cat("Available columns:\n")
+print(colnames(meta))
+```
+
+This meta data table contains all of the "identified" neurons in the dataset.
+
+<p align="center">
+  <img src="../inst/images/cns.png" alt="Central nervous system structure" width="80%">
+</p>
+
+You may encounter neuron IDs outside of this meta data table, in e.g. the synapse table.
+
+Those are "fragments" that have not been linked up to full neurons.
+
+Let's get our list of "proofread" identified neurons, as they are what we will want for analysis, mainly.
+
+```{r proofread}
+# Use the metadata we already loaded
+# Dataset ID - change this ID for different datasets, e.g. the BANC data is: banc_746_id
+proofread_ids <- na.omit(unique(meta_full[[dataset_id]]))
+
+# Show column names
+cat("Number of proofread neurons:\n")
+print(length(proofread_ids))
+```
+
+## Exploring the Metadata
+
+### Hierarchical Classification
+
+The metadata uses a hierarchical classification system. See the full schema [here](../data/meta_data_entries.csv). This is based largely on the hierarchical scheme developed in Schlegel et al., 2024, see [here](https://pubmed.ncbi.nlm.nih.gov/39358521/).
+
+**Hierarchy:** flow → super_class → cell_class → cell_sub_class → cell_type
+
+```{r hier_table}
+# Count neurons by classification level
+flow_counts <- meta %>%
+  count(flow, sort = TRUE) %>%
+  filter(!is.na(flow))
+
+super_counts <- meta %>%
+  count(super_class, sort = TRUE) %>%
+  filter(!is.na(super_class))
+
+class_counts <- meta %>%
+  count(cell_class, sort = TRUE) %>%
+  filter(!is.na(cell_class))
+
+cat("\nFlow categories:\n")
+print(flow_counts)
+
+cat("\nTop 10 super_classes:\n")
+print(head(super_counts, 10))
+
+cat("\nTop 10 cell_classes:\n")
+print(head(class_counts, 10))
+```
+
+### Neurotransmitter Distribution
+
+Neurotransmitter predictions are based on [Eckstein & Bates et al. (2024) *Cell*](https://doi.org/10.1016/j.cell.2024.03.016).
+
+```{r nt_plot}
+# Count neurotransmitter predictions
+nt_counts <- meta %>%
+  count(neurotransmitter_predicted) %>%
+  filter(!is.na(neurotransmitter_predicted)) %>%
+  arrange(desc(n)) %>%
+  mutate(neurotransmitter_predicted = fct_reorder(neurotransmitter_predicted, n))
+
+# Create plot
+p_nt <- ggplot(nt_counts, aes(x = neurotransmitter_predicted, y = n, fill = neurotransmitter_predicted)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = scales::comma(n)), hjust = -0.2, size = 3.5) +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15)), labels = scales::comma) +
+  coord_flip() +
+  labs(
+    title = paste("Neurotransmitter Predictions:", dataset),
+    subtitle = "Based on Eckstein & Bates et al. (2024)",
+    x = "Predicted Neurotransmitter",
+    y = "Number of Neurons"
+  )
+
+# Save and display plot
+save_plot(p_nt, "neurotransmitter_distribution")
+print(p_nt)
+```
+
+## Working with Synapse Data (Parquet + Lazy Loading)
+
+Synapse files are large (4-15 GB). With **Parquet format** and Arrow's lazy evaluation:
+- ✓ Filter and select BEFORE loading into RAM
+- ✓ Only loads matching rows and selected columns
+- ✓ Works on multi-GB files efficiently
+
+**For large Parquet files:** Download locally first for best performance if you have the space
+
+```bash
+# One-time download (recommended for repeated use)
+gsutil cp gs://brain-and-nerve-cord_exports/sjcabs_data/banc/banc_746_synapses.parquet ~/data/sjcabs_data/banc/
+```
+
+Then update your data_path to use local files.
+
+### Filtering Mushroom Body Synapses
+
+Our synapses have been roughly mapped to "neuropils", which are human-determined regions of the nervous system. These determinations are based on lumps and grooves on the surface of neural tissue and boundaries in synapse densities, but they roughly correlate with functional circuits. At least in some cases.
+
+Our brain neuropils are transformed into connectome spaces from Ito et al., 2014's demarcations at light-level, see [here](https://pubmed.ncbi.nlm.nih.gov/24559671/). See below.
+
+<p align="center">
+  <img src="../inst/images/brain_neuropils_ito_et_al_2014.jpg" alt="Brain Neuropils from Ito et al. 2014" width="80%">
+</p>
+
+Our ventral nerve cord neuropils come from Court et al. 2020, see [here](https://pubmed.ncbi.nlm.nih.gov/32931755/). See below.
+
+<p align="center">
+  <img src="../inst/images/vnc_neuropils_court_et_al_2020.jpg" alt="VNC Neuropils from Court et al. 2020" width="80%">
+</p>
+
+The [mushroom body](https://en.wikipedia.org/wiki/Mushroom_bodies) (MB) is the insect brain structure for associative learning and memory. Let's extract MB synapses using [regex](https://stringr.tidyverse.org/articles/regular-expressions.html) pattern matching.
+
+**Two approaches depending on data location:**
+
+- **GCS:** Use `query_parquet_gcs()` with DuckDB for server-side filtering (only filtered data is downloaded)
+- **Local:** Use Arrow's lazy evaluation to scan local Parquet files efficiently
+
+**Note:** DuckDB is used for GCS queries because it:
+- Handles various Parquet formats robustly (avoids format compatibility issues)
+- Provides automatic predicate pushdown for efficient filtering
+- Has excellent GCS integration via the httpfs extension
+- Uses familiar SQL syntax for filters
+
+```{r mb_synapses}
+cat("\n=== FILTERING PARQUET DATA ===\n")
+
+if (use_gcs) {
+  # GCS APPROACH: Server-side filtering with DuckDB
+  # DuckDB reads directly from GCS with predicate pushdown
+  # Only the filtered data is transferred from cloud storage
+  cat("\nQuerying GCS Parquet with DuckDB server-side filtering...\n")
+  cat("(Only matching rows/columns will be downloaded)\n\n")
+
+  # Query with server-side filtering (using custom query_parquet_gcs() function)
+  # DuckDB uses SQL syntax for filters
+  mb_synapses <- query_parquet_gcs(
+    path = synapse_path,
+    gcs_filesystem = gcs_fs,
+    filters = "neuropil LIKE 'MB%' AND side = 'right'",  # SQL WHERE clause - right side only
+    columns = c("id", "pre", "post", "neuropil", "side")
+  )
+
+  cat("✓ Done! Loaded only the filtered data from GCS\n")
+
+} else {
+  # LOCAL APPROACH: Arrow lazy evaluation
+  # Arrow scans the file and loads only matching rows into RAM
+  cat("\nQuerying local Parquet with lazy evaluation...\n")
+  cat("(Arrow scans file and loads only matching rows/columns)\n\n")
+
+  # Open dataset lazily (using custom open_dataset_lazy() function)
+  synapses_ds <- open_dataset_lazy(synapse_path, format = "parquet")
+
+  # Define and execute query
+  mb_synapses <- synapses_ds %>%
+    filter(str_detect(neuropil, "^MB"),
+           side == "right",
+           pre %in% proofread_ids | post %in% proofread_ids) %>%
+    select(id, pre, post, neuropil, side) %>%
+    collect()
+
+  cat("✓ Done! Loaded only the filtered subset into memory\n")
+}
+
+cat("\nMushroom body synapses:", nrow(mb_synapses), "\n")
+cat("Unique presynaptic neurons/fragments:", n_distinct(mb_synapses$pre), "\n")
+cat("Unique postsynaptic neurons/fragments:", n_distinct(mb_synapses$post), "\n")
+```
+
+### Identify Mushroom Body Neurons
+
+Define MB neurons as those with ≥100 synapses (inputs or outputs) within the MB:
+
+```{r mb_neurons}
+# Count outputs per neuron
+mb_outputs <- mb_synapses %>%
+  filter(pre %in% proofread_ids) %>%
+  count(pre, name = "n_outputs") %>%
+  filter(n_outputs >= 100)
+
+# Count inputs per neuron
+mb_inputs <- mb_synapses %>%
+  filter(post %in% proofread_ids) %>%
+  count(post, name = "n_inputs") %>%
+  filter(n_inputs >= 100)
+
+# Combine to get all MB neurons
+mb_neurons <- unique(c(mb_outputs$pre, mb_inputs$post))
+cat("Neurons with ≥100 synapses in MB:", length(mb_neurons), "\n")
+
+# Check how many are Kenyon cells
+# Use full dataset name with version for ID column (e.g., "banc_746_id")
+mb_meta <- meta %>%
+  filter(get(paste0(dataset, "_id")) %in% mb_neurons)
+
+n_kc <- sum(str_detect(mb_meta$cell_type, "kenyon_cell"), na.rm = TRUE)
+n_other <- nrow(mb_meta) - n_kc
+
+cat("  Kenyon cells:", n_kc, "\n")
+cat("  Other neurons:", n_other, "\n")
+```
+
+### Characterize Non-Kenyon MB Neurons
+
+What other neuron types are present in the mushroom body?
+
+```{r mb_classes}
+# Prepare data
+mb_meta_clean <- mb_meta %>%
+  mutate(
+    super_class = replace_na(super_class, "other"),
+    cell_class = replace_na(cell_class, "other"),
+    cell_sub_class = replace_na(cell_sub_class, "other"),
+    is_kenyon = str_detect(cell_class, "kenyon_cell")
+  ) %>%
+  filter(!is_kenyon)  # Focus on non-Kenyon cells
+
+# Count by classification levels
+super_counts <- mb_meta_clean %>% count(super_class, sort = TRUE)
+class_counts <- mb_meta_clean %>% count(cell_class, sort = TRUE) %>% head(15)
+subclass_counts <- mb_meta_clean %>% count(cell_sub_class, sort = TRUE) %>% head(15)
+
+# Plot super_class
+p1 <- ggplot(super_counts, aes(x = fct_reorder(super_class, n), y = n, fill = super_class)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  scale_fill_brewer(palette = "Set3") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  coord_flip() +
+  labs(title = "Non-Kenyon MB Neurons: Super Class", x = NULL, y = "Count")
+
+# Plot cell_class (top 15)
+p2 <- ggplot(class_counts, aes(x = fct_reorder(cell_class, n), y = n, fill = cell_class)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  scale_fill_viridis_d(option = "viridis") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  coord_flip() +
+  labs(title = "Cell Class (Top 15)", x = NULL, y = "Count")
+
+# Plot cell_sub_class (top 15)
+p3 <- ggplot(subclass_counts, aes(x = fct_reorder(cell_sub_class, n), y = n, fill = cell_sub_class)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  scale_fill_viridis_d(option = "plasma") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  coord_flip() +
+  labs(title = "Cell Sub-Class (Top 15)", x = NULL, y = "Count")
+
+# Save and display plots separately (each plot is independent)
+cat("\n### Non-Kenyon MB Neurons: Super Class\n")
+save_plot(p1, "mb_neurons_super_class")
+print(p1)
+
+cat("\n### Cell Class (Top 15)\n")
+save_plot(p2, "mb_neurons_cell_class")
+print(p2)
+
+cat("\n### Cell Sub-Class (Top 15)\n")
+save_plot(p3, "mb_neurons_cell_subclass")
+print(p3)
+```
+
+### Summary Visualization
+
+Here we create a summary comparing Kenyon vs non-Kenyon MB neurons:
+
+```{r mb_summary}
+# Prepare summary data
+mb_summary <- data.frame(
+  Category = c("Kenyon Cells", "Other MB Neurons"),
+  Count = c(n_kc, n_other),
+  Percentage = c(n_kc / (n_kc + n_other) * 100,
+                 n_other / (n_kc + n_other) * 100)
+)
+
+# Create summary plot
+p_summary <- ggplot(mb_summary, aes(x = "", y = Count, fill = Category)) +
+  geom_col(width = 1, color = "white", size = 2) +
+  geom_text(aes(label = paste0(Count, "\n(", round(Percentage, 1), "%)")),
+            position = position_stack(vjust = 0.5),
+            size = 5, fontface = "bold", color = "white") +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9")) +
+  labs(
+    title = paste("Mushroom Body Neurons:", dataset),
+    subtitle = "Neurons with ≥100 synapses in MB",
+    fill = "Cell Type"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    plot.subtitle = element_text(size = 11, hjust = 0.5),
+    legend.position = "right"
+  )
+
+# Save and display plot
+save_plot(p_summary, "mb_neurons_summary")
+print(p_summary)
+```
+
+Yoshi Aso's 2014 pre-connectome [paper](https://pubmed.ncbi.nlm.nih.gov/25535793/) on the mushroom body and its neuroanatomy are a great primer on understanding neurons of the mushroom body.
+
+There are lots of neuron classes and sub classes in the "other" set. Do, e.g., ascending neurons from the ventral nerve cord really do to the mushroom body?
+
+The answer is actually no. Many of the neuropil volumes made in order to label synapses are from data that was transformed into the connectome space, not made directly for it.
+
+This means that the volumes can be slightly the wrong shape, and slightly shifted by some microns in space. As a consequence, neurons that are not actually in the canonical mushroom body are caught by our search.
+
+Neuropils are simply helpful guides through the nervous systems, like countries on a map. Countries correlate with geography but if you want to understand geology, you generally ignore their human-made borders. Likewise, in connectomics, neuropils are guides that set your sites on the right location, but real answers come from connectivity, and thinking about your results.
+
+## Your Turn: Compare Datasets
+
+Now try this analysis yourself with a different dataset!
+
+**Exercise:** Switch to the `malecns` dataset and compare results with BANC.
+
+```{r exercise, eval=FALSE}
+# To work with a different dataset, change the dataset variable at the top:
+# dataset <- "malecns_09"
+# dataset_id <- "malecns_09_id"
+
+# Then re-run the entire notebook to see how the results differ!
+```
+
+### Tasks:
+
+1. **Read mushroom body synapses** from maleCNS
+2. **Identify MB neurons** using the same ≥100 synapse threshold
+3. **Compare with BANC**:
+   - Are the proportions of Kenyon cells similar?
+   - What other cell types differ?
+   - Do you think differences are biological or due to inter-dataset variation?
+
+**Note:** Neurons missing from metadata are typically small fragments not assigned to full reconstructions.
+
+### Biological vs Technical Differences
+
+Consider:
+- **BANC** = female fly, FlyWire reconstruction methods
+- **maleCNS** = male fly, Janelia reconstruction methods
+- **Sex differences**: Male flies may have different neuron numbers in some circuits
+- **Reconstruction quality**: Different methods may capture different neuron populations
+- **Annotation standards**: Despite harmonisation, some labelling differences remain
+
+---
+
+## Summary
+
+In this tutorial you learned how to:
+
+✓ Access connectome data from Google Cloud Storage or local paths
+✓ Use server-side filtering with Parquet for efficient GCS queries
+✓ Apply Arrow's lazy evaluation for local Parquet files
+✓ Load small metadata files (`.feather`) into memory
+✓ Explore neuron metadata and hierarchical classifications
+✓ Filter synapse data by brain region using regex patterns
+✓ Identify and characterise neurons by connectivity patterns
+✓ Create publication-quality visualisations
+✓ Compare datasets to identify biological vs technical variation
+
+**Next tutorial:** [02_neuronal_morphology.Rmd](02_neuronal_morphology.Rmd) - Load and visualise 3D neuron skeletons
+
+---
+
+## Session Information
+
+```{r session_info}
+sessionInfo()
+```
