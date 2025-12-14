@@ -74,7 +74,7 @@ First complete nerve cord connectome with ~23,000 neurons. A male fly. Missing b
 - **Documentation:** [data/dataset_documentation/manc_data.md](data/dataset_documentation/manc_data.md)
 
 <p align="center">
-  <img src="inst/images/hemibrain.png" alt="Hemibrain connectome" width="40%">
+  <img src="inst/images/hemibrain.png" alt="Hemibrain connectome" width="25%">
 </p>
 
 ### Hemibrain
@@ -89,7 +89,7 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 ## Analysis Tools
 
 <p align="center">
-  <img src="inst/images/navis.png" alt="navis - neuron analysis and visualization" width="40%">
+  <img src="inst/images/navis.png" alt="navis - neuron analysis and visualization" width="30%">
 </p>
 
 ### Python
@@ -102,7 +102,7 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 - **[Influence score calculator](https://zenodo.org/records/17693838)** - Quantify influence between sensory and effector neurons
 
 <p align="center">
-  <img src="inst/images/natverse_promotion.png" alt="natverse - NeuroAnatomy Toolbox for R" width="80%">
+  <img src="inst/images/natverse_promotion.png" alt="natverse - NeuroAnatomy Toolbox for R" width="70%">
 </p>
 
 ### R
