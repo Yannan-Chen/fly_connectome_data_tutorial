@@ -20,7 +20,7 @@ This tutorial provides foundational skills for loading, analysing, and visualisi
 ---
 
 <p align="center">
-  <img src="inst/images/banner.png" alt="Fly connectome datasets" width="90%">
+  <img src="inst/images/banner.png" alt="Fly connectome datasets" width="100%">
 </p>
 
 ## Connectome Datasets
@@ -28,7 +28,7 @@ This tutorial provides foundational skills for loading, analysing, and visualisi
 We focus primarily on two FlyWire datasets—**BANC** and **FAFB**—while also providing access to MANC, Hemibrain, and Male CNS. All datasets have been harmonized to use the unified metadata schema we used in the **BANC** project, enabling cross-dataset comparisons. Possible metadata entries given here: [data/meta_data_entries](data/meta_data_entries.csv). You can see renderings of neuronal meshes from the BANC, FAFB, MANC and HemiBrain datasets in neuroglancer [here](https://http//ng.banc.community/view).
 
 <p align="center">
-  <img src="inst/images/banc.png" alt="BANC connectome" width="80%">
+  <img src="inst/images/banc.png" alt="BANC connectome" width="40%">
 </p>
 
 ### BANC (Brain and Nerve Cord)
@@ -41,7 +41,7 @@ The first synapse-resolution connectome spanning the both brain and ventral nerv
 - **Documentation:** [data/dataset_documentation/banc_data.md](data/dataset_documentation/banc_data.md)
 
 <p align="center">
-  <img src="inst/images/malecns.png" alt="Male CNS connectome" width="80%">
+  <img src="inst/images/malecns.png" alt="Male CNS connectome" width="40%">
 </p>
 
 ### Male CNS (Central Nervous System)
@@ -52,7 +52,7 @@ Complete male CNS connectome with 166,691 neurons spanning brain and ventral ner
 - **Documentation:** [data/dataset_documentation/malecns_data.md](data/dataset_documentation/malecns_data.md)
 
 <p align="center">
-  <img src="inst/images/fafb.png" alt="FAFB connectome" width="80%">
+  <img src="inst/images/fafb.png" alt="FAFB connectome" width="40%">
 </p>
 
 ### FAFB (Full Adult Fly Brain)
@@ -63,7 +63,7 @@ Complete adult female fly brain connectome via the FlyWire project. Contains ~13
 - **Documentation:** [data/dataset_documentation/fafb_data.md](data/dataset_documentation/fafb_data.md)
 
 <p align="center">
-  <img src="inst/images/manc.png" alt="MANC connectome" width="80%">
+  <img src="inst/images/manc.png" alt="MANC connectome" width="40%">
 </p>
 
 ### MANC (Male Adult Nerve Cord)
@@ -74,7 +74,7 @@ First complete nerve cord connectome with ~23,000 neurons. A male fly. Missing b
 - **Documentation:** [data/dataset_documentation/manc_data.md](data/dataset_documentation/manc_data.md)
 
 <p align="center">
-  <img src="inst/images/hemibrain.png" alt="Hemibrain connectome" width="80%">
+  <img src="inst/images/hemibrain.png" alt="Hemibrain connectome" width="40%">
 </p>
 
 ### Hemibrain
@@ -89,7 +89,7 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 ## Analysis Tools
 
 <p align="center">
-  <img src="inst/images/navis.png" alt="navis - neuron analysis and visualization" width="80%">
+  <img src="inst/images/navis.png" alt="navis - neuron analysis and visualization" width="40%">
 </p>
 
 ### Python
@@ -329,5 +329,5 @@ More generally, if you use these datasets in your work, please cite the original
 **Year:** 2025
 
 <p align="center">
-  <img src="inst/images/flywire_sterling_gallery_dm4.png" alt="FlyWire visualization" width="90%">
+  <img src="inst/images/flywire_sterling_gallery_dm4.png" alt="FlyWire visualization" width="45%">
 </p>
