@@ -53,6 +53,9 @@ save_plot <- function(plot_obj, name, width = 10, height = 6) {
 source("setup/packages.R")
 source("setup/functions.R")
 
+# Set plotly as default 3D plot engine for nat
+options(nat.plotengine = 'plotly')
+
 # Additional packages for network analysis
 library(igraph)
 library(ggraph)
@@ -101,126 +104,108 @@ You can instead choose to work with the full dataset, or a different subset.
 
 ### Visualizing the Suboesophageal Zone Neuropils
 
-The suboesophageal zone contains several distinct neuropils. Let's visualize their 3D structures to understand their spatial organization:
+The suboesophageal zone contains several distinct neuropils. Let's visualize their 3D structures to understand their spatial organization.
 
-```{r visualize_neuropils, warning=FALSE, message=FALSE}
-# Define neuropil names and colors
-neuropil_names <- c("GNG", "FLA", "SAD", "PRW", "AMMC")
-neuropil_colors <- c("red", "blue", "green", "purple", "orange")
+**Note on 3D mesh organization:**
+- **Large anatomical regions** (VNC, brain, etc.): `obj/` directory
+- **Smaller specific neuropils** (GNG, FLA, AMMC, etc.): `obj/neuropils/` subdirectory
 
+```{r visualize_neuropils, warning=FALSE, message=FALSE, fig.width=10, fig.height=8}
 # Extract base dataset name
 dataset_base <- sub("_[0-9]+$", "", dataset)
 
-# Construct path to mesh files
-if (use_gcs) {
-  # GCS path: data_path/banc/obj/
-  mesh_base_path <- file.path(data_path, dataset_base, "obj")
-} else {
-  # Local path
-  mesh_base_path <- file.path("../inst/meshes", tolower(dataset_base))
+# Download and read meshes as hxsurf objects for nat+plotly
+read_neuropil <- function(search, data_path, dataset_base, ext="neuropils"){
+  neuropil_path <- file.path(data_path, dataset_base, "obj", ext)
+  neuropil_files <- system(paste("gsutil ls", neuropil_path), intern = TRUE)
+  objs <- neuropil_files[grepl(search, basename(neuropil_files))]
+
+  if (length(objs) == 0) {
+    cat("  No files found matching:", search, "\n")
+    return(NULL)
+  }
+
+  shapelist <- shapelist3d()
+  for(obj_file in objs){
+    temp_file <- tempfile(fileext = ".obj")
+    system(paste("gsutil cp", obj_file, temp_file))
+    mesh <- as.hxsurf(rgl::readOBJ(temp_file))
+    shapelist[[basename(obj_file)]] <- mesh
+    cat("  ✓ Loaded:", basename(obj_file), "\n")
+  }
+
+  # Convert shapelist to hxsurf object for plotting
+  as.hxsurf(shapelist)
 }
 
-# Try to load and visualize neuropils
-tryCatch({
-  # Initialize plotly figure
-  fig <- plot_ly()
+cat("Loading SEZ neuropil meshes...\n\n")
 
-  # Helper function to read obj file (handles both GCS and local)
-  read_mesh_file <- function(path) {
-    if (use_gcs) {
-      # Download from GCS to temp file
-      temp_file <- tempfile(fileext = ".obj")
-      system2("gsutil", args = c("cp", path, temp_file), stdout = FALSE, stderr = FALSE)
-      if (file.exists(temp_file)) {
-        mesh <- readobj::read.obj(temp_file, convert.rgl = TRUE)
-        unlink(temp_file)
-        return(mesh)
-      } else {
-        return(NULL)
-      }
-    } else {
-      if (file.exists(path)) {
-        return(readobj::read.obj(path, convert.rgl = TRUE))
-      } else {
-        return(NULL)
-      }
-    }
-  }
+# Read brain mesh (large region)
+cat("Brain:\n")
+brain_mesh <- read_neuropil("brain", data_path, dataset_base, ext = "")
 
-  # Add whole brain if available
-  brain_mesh_path <- file.path(mesh_base_path, "brain.obj")
-  brain_mesh <- read_mesh_file(brain_mesh_path)
+# Read SEZ neuropils (smaller specific regions)
+cat("\nSEZ Neuropils:\n")
+gng_mesh <- read_neuropil("GNG", data_path, dataset_base)
+fla_l_mesh <- read_neuropil("FLA_L", data_path, dataset_base)
+fla_r_mesh <- read_neuropil("FLA_R", data_path, dataset_base)
+sad_mesh <- read_neuropil("SAD", data_path, dataset_base)
+prw_mesh <- read_neuropil("PRW", data_path, dataset_base)
+ammc_l_mesh <- read_neuropil("AMMC_L", data_path, dataset_base)
+ammc_r_mesh <- read_neuropil("AMMC_R", data_path, dataset_base)
 
-  if (!is.null(brain_mesh)) {
-    fig <- fig %>%
-      add_trace(
-        type = "mesh3d",
-        x = brain_mesh$vb[1,],
-        y = brain_mesh$vb[2,],
-        z = brain_mesh$vb[3,],
-        i = brain_mesh$it[1,] - 1,
-        j = brain_mesh$it[2,] - 1,
-        k = brain_mesh$it[3,] - 1,
-        color = "grey",
-        opacity = 0.1,
-        name = "Brain",
-        showlegend = TRUE
-      )
-  }
+# Plot all meshes in 3D with nat+plotly
+cat("\n3D Visualization:\n")
+nclear3d()
 
-  # Add each neuropil
-  meshes_loaded <- 0
-  for (i in seq_along(neuropil_names)) {
-    neuropil_path <- file.path(mesh_base_path, paste0(tolower(neuropil_names[i]), ".obj"))
-    neuropil_mesh <- read_mesh_file(neuropil_path)
+# Plot brain as context (very transparent)
+if (!is.null(brain_mesh)) {
+  plot3d(brain_mesh, col = "lightgrey", alpha = 0.1)
+  cat("  ✓ Plotted brain\n")
+}
 
-    if (!is.null(neuropil_mesh)) {
-      fig <- fig %>%
-        add_trace(
-          type = "mesh3d",
-          x = neuropil_mesh$vb[1,],
-          y = neuropil_mesh$vb[2,],
-          z = neuropil_mesh$vb[3,],
-          i = neuropil_mesh$it[1,] - 1,
-          j = neuropil_mesh$it[2,] - 1,
-          k = neuropil_mesh$it[3,] - 1,
-          color = neuropil_colors[i],
-          opacity = 0.5,
-          name = neuropil_names[i],
-          showlegend = TRUE
-        )
-      meshes_loaded <- meshes_loaded + 1
-    }
-  }
+# Plot SEZ neuropils with distinct colors
+if (!is.null(gng_mesh)) {
+  plot3d(gng_mesh, col = "red", alpha = 0.5, add = TRUE)
+  cat("  ✓ Plotted GNG (red)\n")
+}
 
-  # Only show plot if we loaded at least one mesh
-  if (meshes_loaded > 0 || !is.null(brain_mesh)) {
-    # Configure layout
-    fig <- fig %>%
-      layout(
-        title = "Suboesophageal Zone Neuropils",
-        scene = list(
-          xaxis = list(title = "X", showgrid = FALSE),
-          yaxis = list(title = "Y", showgrid = FALSE),
-          zaxis = list(title = "Z", showgrid = FALSE),
-          camera = list(
-            eye = list(x = 1.5, y = 1.5, z = 1.5)
-          )
-        )
-      )
+if (!is.null(fla_l_mesh)) {
+  plot3d(fla_l_mesh, col = "blue", alpha = 0.5, add = TRUE)
+  cat("  ✓ Plotted FLA (L) (blue)\n")
+}
 
-    print(fig)
-    cat("✓ Neuropil visualization complete\n")
-    cat("  Loaded", meshes_loaded, "neuropil mesh(es)\n")
-  } else {
-    cat("Note: No neuropil meshes found at:", mesh_base_path, "\n")
-  }
+if (!is.null(fla_r_mesh)) {
+  plot3d(fla_r_mesh, col = "lightblue", alpha = 0.5, add = TRUE)
+  cat("  ✓ Plotted FLA (R) (light blue)\n")
+}
 
-}, error = function(e) {
-  cat("Note: Could not load neuropil meshes.\n")
-  cat("Expected location:", mesh_base_path, "\n")
-  cat("Error:", conditionMessage(e), "\n")
-})
+if (!is.null(sad_mesh)) {
+  plot3d(sad_mesh, col = "green", alpha = 0.5, add = TRUE)
+  cat("  ✓ Plotted SAD (green)\n")
+}
+
+if (!is.null(prw_mesh)) {
+  plot3d(prw_mesh, col = "purple", alpha = 0.5, add = TRUE)
+  cat("  ✓ Plotted PRW (purple)\n")
+}
+
+if (!is.null(ammc_l_mesh)) {
+  plot3d(ammc_l_mesh, col = "orange", alpha = 0.5, add = TRUE)
+  cat("  ✓ Plotted AMMC (L) (orange)\n")
+}
+
+if (!is.null(ammc_r_mesh)) {
+  plot3d(ammc_r_mesh, col = "lightsalmon", alpha = 0.5, add = TRUE)
+  cat("  ✓ Plotted AMMC (R) (light salmon)\n")
+}
+
+# Add title
+title3d(main = "Suboesophageal Zone Neuropils",
+        xlab = "X (nm)", ylab = "Y (nm)", zlab = "Z (nm)")
+
+cat("\n✓ Neuropil visualization complete!\n")
+
 ```
 
 ## Load Data
@@ -357,8 +342,66 @@ cat("Negative connections (inhibitory):", sum(edgelist$signed_norm < 0, na.rm = 
 
 Here are some normalised density plots, comparing the distribution of inhibitory and excitatory neuron-neuron connections by synaptic strengths.
 
+```{r signed_weight_distribution}
+# Classify connections by sign
+edgelist_signed <- edgelist %>%
+  mutate(
+    connection_type = case_when(
+      signed_norm > 0 ~ "Excitatory",
+      signed_norm < 0 ~ "Inhibitory",
+      TRUE ~ "Unknown"
+    )
+  ) %>%
+  filter(connection_type != "Unknown")
+
+# Create density plot of absolute weights by connection type
+p_signed_dist <- ggplot(edgelist_signed,
+                        aes(x = abs(signed_norm),
+                            color = connection_type,
+                            fill = connection_type)) +
+  geom_density(alpha = 0.3, linewidth = 1) +
+  scale_x_log10() +
+  scale_color_manual(
+    values = c("Excitatory" = "red", "Inhibitory" = "blue"),
+    name = "Connection Type"
+  ) +
+  scale_fill_manual(
+    values = c("Excitatory" = "red", "Inhibitory" = "blue"),
+    name = "Connection Type"
+  ) +
+  labs(
+    title = "Distribution of Connection Strengths by Sign",
+    subtitle = "Based on predicted neurotransmitter type",
+    x = "Normalized Weight (absolute, log scale)",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "right"
+  )
+
+save_plot(p_signed_dist, paste0(dataset, "_signed_weight_distribution"))
+ggplotly(p_signed_dist)
+
+# Print summary statistics
+cat("\nConnection type statistics:\n")
+cat("Excitatory connections:", sum(edgelist_signed$connection_type == "Excitatory"), "\n")
+cat("Inhibitory connections:", sum(edgelist_signed$connection_type == "Inhibitory"), "\n")
+cat("\nMean absolute weights:\n")
+edgelist_signed %>%
+  group_by(connection_type) %>%
+  summarise(
+    mean_weight = mean(abs(signed_norm), na.rm = TRUE),
+    median_weight = median(abs(signed_norm), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  print()
 ```
-```
+
+However, it is very important not to overplay this idea of being able to assign signs to connections. In the fly, glutamate can be excitatory or inhibitory. In addition, inhibition doesn't only quell activity, it can cause it, e.g. through disinhibition in networks. Consider the visual system, all inputting sensory neurons, the photoreceptor neurons, are histaminergic and inhibit their targets.
+
+It is generally better to work with unsigned edgelists and methods. The exception is when examining direct connectivity, or building concise circuit diagrams.
 
 ## Meta Data Overview
 
@@ -401,7 +444,6 @@ p_super <- ggplot(super_class_counts, aes(y = super_class, x = n)) +
   )
 
 save_plot(p_super, paste0(dataset, "_super_class"))
-print(p_super)
 ggplotly(p_super)
 ```
 
@@ -446,7 +488,7 @@ if (nrow(flow_subclass) > 0) {
     )
 
   save_plot(p_flow, paste0(dataset, "_flow_subclass"), height = 10)
-  print(p_flow)
+  ggplotly(p_flow)
 } else {
   cat("No sensory or effector neurons in this subset.\n")
 }
@@ -484,7 +526,7 @@ p_scatter <- ggplot(edgelist_sample, aes(x = count, y = norm)) +
   theme(plot.title = element_text(face = "bold"))
 
 save_plot(p_scatter, paste0(dataset, "_weight_correlation"))
-print(p_scatter)  # Static version (geom_smooth not compatible with ggplotly)
+ggplotly(p_scatter)
 ```
 
 We can see density plots of input and output degrees with different synapse count thresholds:
@@ -538,7 +580,7 @@ p_degree <- ggplot(degree_data, aes(x = degree, color = type, linetype = thresho
   )
 
 save_plot(p_degree, paste0(dataset, "_degree_distribution"))
-print(p_degree)
+ggplotly(p_degree)
 
 # Print summary statistics
 cat("\nDegree statistics (count > 1):\n")
@@ -668,7 +710,7 @@ p_network <- ggraph(layout_super) +
   geom_node_point(aes(size = degree, color = super_class), alpha = 0.8) +
   geom_node_text(aes(label = name), repel = TRUE, size = 3, fontface = "bold") +
   scale_edge_width(range = c(0.2, 2), name = "Normalized\nWeight") +
-  scale_edge_alpha(range = c(0.2, 0.8), name = "Normalized\nWeight") +
+  scale_edge_alpha(range = c(0.5, 1.0), name = "Normalized\nWeight") +
   scale_size_continuous(range = c(3, 10), name = "Degree") +
   scale_color_discrete(name = "Super Class") +
   scale_edge_color_discrete(name = "Source\nSuper Class") +
@@ -683,7 +725,7 @@ p_network <- ggraph(layout_super) +
   )
 
 save_plot(p_network, paste0(dataset, "_network_super_class"), width = 12, height = 10)
-print(p_network)  # Static version (ggraph not compatible with ggplotly)
+ggplotly(p_network)
 ```
 
 ## Connectivity Matrix
@@ -821,7 +863,7 @@ if (nrow(conn_heatmap_data) > 0) {
     )
 
   save_plot(p_matrix, paste0(dataset, "_conn_matrix_strong"), width = 12, height = 10)
-  print(p_matrix)  # Static version (factor ordering not compatible with ggplotly)
+  ggplotly(p_matrix)
 
   cat("✓ Saved connectivity matrix heatmap\n")
 } else {
@@ -929,10 +971,10 @@ if (nrow(sensory_outputs) > 0) {
                      aes(x = post_label, y = pre_label, fill = norm)) +
     geom_tile(color = "white", linewidth = 0.5) +
     scale_fill_gradientn(
-      colors = c("grey90", "blue", "red"),
-      values = scales::rescale(c(0, p10_sensory, p90_sensory)),
+      colors = c("white", "grey90", "grey50", "black"),
+      values = scales::rescale(c(0, p10_sensory, (p10_sensory + p90_sensory)/2, p90_sensory)),
       limits = c(0, p90_sensory),
-      na.value = "grey90",
+      na.value = "white",
       name = "Normalized\nWeight",
       oob = scales::squish
     ) +
@@ -950,7 +992,7 @@ if (nrow(sensory_outputs) > 0) {
     )
 
   save_plot(p_sensory, paste0(dataset, "_sensory_outputs"), width = 14, height = 10)
-  print(p_sensory)  # Static version
+  ggplotly(p_sensory)
 
   cat("✓ Saved sensory outputs heatmap\n")
   cat("Sensory neuron types:", length(unique(sensory_outputs$pre_label)), "\n")
@@ -1050,7 +1092,7 @@ if (nrow(effector_inputs) > 0) {
     )
 
   save_plot(p_effector, paste0(dataset, "_effector_inputs"), width = 14, height = 10)
-  print(p_effector)  # Static version
+  ggplotly(p_effector)
 
   cat("✓ Saved effector inputs heatmap\n")
   cat("Input neuron types:", length(unique(effector_inputs$pre_label)), "\n")
@@ -1215,7 +1257,7 @@ p_umap_super <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = super_class)) 
   )
 
 save_plot(p_umap_super, paste0(dataset, "_umap_super_class"))
-print(p_umap_super)  # Static version (geom_density_2d not compatible with ggplotly)
+ggplotly(p_umap_super)
 ```
 
 Next, we will perform [hierarchical clustering](https://en.wikipedia.org/wiki/Hierarchical_clustering) on the UMAP coordinates to identify connectivity-based clusters:
@@ -1307,7 +1349,7 @@ p_umap_clusters <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = cluster)) +
   )
 
 save_plot(p_umap_clusters, paste0(dataset, "_umap_clusters"))
-print(p_umap_clusters)  # Static version
+ggplotly(p_umap_clusters)
 ```
 
 Let's examine what cell types are in each cluster:
@@ -1357,7 +1399,91 @@ p_cluster_comp <- ggplot(cluster_super,
   )
 
 save_plot(p_cluster_comp, paste0(dataset, "_cluster_composition"))
-print(p_cluster_comp)  # Static version
+ggplotly(p_cluster_comp)
+```
+
+### Sensory and Effector Neuron Focus
+
+Let's create a special UMAP visualization highlighting sensory and effector neurons:
+
+```{r umap_sensory_effector}
+# Add flow information to UMAP data
+umap_df_flow <- umap_df %>%
+  mutate(
+    is_sensory = super_class == "sensory",
+    is_effector = super_class == "efferent",
+    display_type = case_when(
+      is_sensory ~ "Sensory",
+      is_effector ~ "Effector",
+      TRUE ~ "Other"
+    ),
+    point_shape = case_when(
+      is_sensory ~ "circle",
+      is_effector ~ "square",
+      TRUE ~ "circle"
+    ),
+    display_label = case_when(
+      is_sensory | is_effector ~ cell_sub_class,
+      TRUE ~ "Other"
+    )
+  )
+
+# Create plot
+p_umap_sensory_effector <- ggplot(umap_df_flow, aes(x = UMAP1, y = UMAP2)) +
+  # Plot "Other" neurons in grey first
+  geom_point(
+    data = umap_df_flow %>% filter(display_type == "Other"),
+    aes(color = display_type),
+    alpha = 0.3,
+    size = 1.5,
+    shape = 16
+  ) +
+  # Plot sensory neurons (circles) colored by cell_sub_class
+  geom_point(
+    data = umap_df_flow %>% filter(is_sensory),
+    aes(color = display_label),
+    alpha = 0.8,
+    size = 2.5,
+    shape = 16  # circle
+  ) +
+  # Plot effector neurons (squares) colored by cell_sub_class
+  geom_point(
+    data = umap_df_flow %>% filter(is_effector),
+    aes(color = display_label),
+    alpha = 0.8,
+    size = 2.5,
+    shape = 15  # square
+  ) +
+  scale_color_manual(
+    values = c(
+      "Other" = "grey70",
+      setNames(
+        rainbow(length(unique(c(
+          umap_df_flow$cell_sub_class[umap_df_flow$is_sensory],
+          umap_df_flow$cell_sub_class[umap_df_flow$is_effector]
+        )))),
+        unique(c(
+          umap_df_flow$cell_sub_class[umap_df_flow$is_sensory],
+          umap_df_flow$cell_sub_class[umap_df_flow$is_effector]
+        ))
+      )
+    ),
+    name = "Cell Sub-Class"
+  ) +
+  labs(
+    title = "UMAP: Sensory and Effector Neurons",
+    subtitle = "Sensory = circles, Effector = squares, colored by cell sub-class",
+    x = "UMAP 1",
+    y = "UMAP 2"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "right"
+  )
+
+save_plot(p_umap_sensory_effector, paste0(dataset, "_umap_sensory_effector"))
+ggplotly(p_umap_sensory_effector)
 ```
 
 ## Cluster Network with Sensory-Effector Nodes
@@ -1427,8 +1553,9 @@ if (nrow(edgelist_cluster_network) > 0) {
     activate(nodes) %>%
     mutate(degree = centrality_degree(mode = "total"))
 
-  # Create layout
-  layout_cluster <- create_layout(g_cluster_tidy, layout = "fr", niter = 1000)
+  # Create layout with increased repulsion (larger area for better spacing)
+  layout_cluster <- create_layout(g_cluster_tidy, layout = "fr", niter = 1000,
+                                  area = vcount(g_cluster_tidy)^2.5)
 
   # Create node color mapping: use cluster colors for clusters, fixed colors for sensory/effector
   layout_cluster <- layout_cluster %>%
@@ -1462,7 +1589,7 @@ if (nrow(edgelist_cluster_network) > 0) {
       fontface = "bold"
     ) +
     scale_edge_width(range = c(0.2, 1.5), name = "Synapse\nCount") +
-    scale_edge_alpha(range = c(0.3, 0.9)) +
+    scale_edge_alpha(range = c(0.5, 1.0)) +
     scale_size_continuous(range = c(3, 12), name = "Neuron\nCount") +
     scale_color_identity() +
     labs(
@@ -1476,7 +1603,7 @@ if (nrow(edgelist_cluster_network) > 0) {
     )
 
   save_plot(p_cluster_network, paste0(dataset, "_cluster_network"), width = 14, height = 12)
-  print(p_cluster_network)
+  ggplotly(p_cluster_network)
 
   cat("✓ Created cluster network with", vcount(g_cluster), "nodes and",
       ecount(g_cluster), "edges\n")
