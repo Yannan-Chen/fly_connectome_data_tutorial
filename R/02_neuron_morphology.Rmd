@@ -281,8 +281,8 @@ nclear3d()
 # Plot multiple neurons in different colors
 n_plot <- length(neurons)
 cat("Plotting", n_plot, "DNg12 neurons with neuropil context\n")
-plot3d(vnc_mesh, col = "lightgrey", alpha = 0.1)
-plot3d(leg_mesh, col = "lightblue", alpha = 0.3, add = TRUE)
+dummy1<-plot3d(vnc_mesh, col = "lightgrey", alpha = 0.1)
+dummy2<-plot3d(leg_mesh, col = "lightblue", alpha = 0.3, add = TRUE)
 plot3d(neurons, col = rainbow(length(neurons)), lwd = 2, soma = 10000)
 # This works for the rgl version of this plot: title3d(main = paste(n_plot,
 # "DNg12 Neurons in Neuropil Context"), xlab = "X (nm)", ylab = "Y (nm)", zlab =
@@ -486,7 +486,7 @@ cat("Converted to dotprops representation\n")
 # This computes morphological similarity scores
 cat("Running NBLAST (this may take a moment)...\n")
 # Use smat=NULL to use raw dot product scores
-nblast_scores <- nat.nblast::nblast_allbyall(neurons_dp, UseAlpha = TRUE, .parallel = TRUE)
+nblast_scores <- nat.nblast::nblast_allbyall(neurons_dp, UseAlpha = TRUE)
 
 cat("NBLAST complete!\n")
 cat("Score matrix dimensions:", dim(nblast_scores), "\n")
@@ -499,7 +499,7 @@ Let's visualise the result as a dendrogram:
 nblast_hc <- nhclust(scoremat = nblast_scores)
 
 # Cut the dendrogram into k clusters
-k <- 20
+k <- 8
 clusters <- cutree(nblast_hc, k = k)
 cat("Divided neurons into", k, "clusters\n")
 table(clusters)
@@ -508,15 +508,20 @@ table(clusters)
 cut_height <- nblast_hc$height[length(nblast_hc$height) - k + 1]
 
 # Create dendrogram data for ggplot2
-library(ggdendro)
 dend_data <- dendro_data(as.dendrogram(nblast_hc))
 
-# Add cluster information to the leaf labels
-dend_data$labels$cluster <- clusters[match(as.numeric(dend_data$labels$label),
-                                            order.dendrogram(as.dendrogram(nblast_hc)))]
+# Get the dendrogram order and map back to neuron IDs
+dend_order <- order.dendrogram(as.dendrogram(nblast_hc))
+neuron_names <- names(neurons)
+
+# Add cluster information and neuron IDs to the leaf labels
+dend_data$labels$cluster <- clusters[dend_data$labels$label]
+dend_data$labels$cell_type <- meta$cell_type[match(dend_data$labels$label,meta$id)]
 
 # Create a color palette for clusters
 cluster_colors <- setNames(rainbow(k), 1:k)
+neuron_colors <- cluster_colors[dend_data$labels$cluster]
+names(neuron_colors) <- dend_data$labels$label
 
 # Create ggplot2 dendrogram with colored leaves and cut line
 p_dend <- ggplot() +
@@ -524,7 +529,7 @@ p_dend <- ggplot() +
                aes(x = x, y = y, xend = xend, yend = yend),
                color = "grey50", linewidth = 0.5) +
   geom_point(data = dend_data$labels,
-             aes(x = x, y = y, color = factor(cluster)),
+             aes(x = x, y = y, color = factor(cluster), text = cell_type),
              size = 2, show.legend = TRUE) +
   geom_hline(yintercept = cut_height, linetype = "dashed",
              color = "red", linewidth = 0.8) +
@@ -552,8 +557,8 @@ p_dend <- ggplot() +
 save_plot(p_dend, paste0(dataset, "_", subset_name, "_nblast_dendrogram"),
           width = 12, height = 8)
 
-# Create and display interactive plotly version
-p_dend_plotly <- ggplotly(p_dend, tooltip = c("y")) %>%
+# Create and display interactive plotly version with neuron ID hover text
+p_dend_plotly <- ggplotly(p_dend, tooltip = c("text", "y", "colour")) %>%
   layout(
     hovermode = "closest",
     title = list(
@@ -569,12 +574,60 @@ p_dend_plotly
 
 Great, now let's view ~20 clusters by morphology:
 
-```{r visualize_clusters, eval=FALSE, fig.width=10, fig.height=8}
+```{r visualize_cluster_1, eval=TRUE, fig.width=10, fig.height=8}
 # Plot neurons colored by cluster
 nclear3d()
-plot3d(neurons,col=neuron_colors, soma = 10000)
-title3d(main = paste(k, "Morphological Clusters"),
-        xlab = "X (µm)", ylab = "Y (µm)", zlab = "Z (µm)")
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==1]], col = cluster_colors[1], soma = 10000)
+```
+
+```{r visualize_cluster_2, eval=TRUE, fig.width=10, fig.height=8}
+# Plot neurons colored by cluster
+nclear3d()
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==2]], col = cluster_colors[2], soma = 10000)
+```
+
+```{r visualize_cluster_3, eval=TRUE, fig.width=10, fig.height=8}
+# Plot neurons colored by cluster
+nclear3d()
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==3]], col = cluster_colors[3], soma = 10000)
+```
+
+```{r visualize_cluster_4, eval=TRUE, fig.width=10, fig.height=8}
+# Plot neurons colored by cluster
+nclear3d()
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==4]], col = cluster_colors[4], soma = 10000)
+```
+
+```{r visualize_cluster_5, eval=TRUE, fig.width=10, fig.height=8}
+# Plot neurons colored by cluster
+nclear3d()
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==5]], col = cluster_colors[5], soma = 10000)
+```
+
+```{r visualize_cluster_6, eval=TRUE, fig.width=10, fig.height=8}
+# Plot neurons colored by cluster
+nclear3d()
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==6]], col = cluster_colors[6], soma = 10000)
+```
+
+```{r visualize_cluster_7, eval=TRUE, fig.width=10, fig.height=8}
+# Plot neurons colored by cluster
+nclear3d()
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==7]], col = cluster_colors[7], soma = 10000)
+```
+
+```{r visualize_cluster_8, eval=TRUE, fig.width=10, fig.height=8}
+# Plot neurons colored by cluster
+nclear3d()
+dummy<-plot3d(leg_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+plot3d(neurons[names(clusters)[clusters==8]], col = cluster_colors[8], soma = 10000)
 ```
 
 You can try playing with the number of clusters, `k`.
