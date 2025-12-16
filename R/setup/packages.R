@@ -11,6 +11,7 @@ packages_core <- c(
   "patchwork",       # Combining plots
   "nat",             # Neuron morphology analysis
   "nat.nblast",      # compare neuron morphologies
+  "nat.flybrains",   # Transform neurons between fly template spaces
   "plotly",          # Interactive plots
   "duckdb",          # SQL database for efficient Parquet queries
   "ggdendro",        # Dendrogram visualization
@@ -25,7 +26,9 @@ packages_core <- c(
   "lsa",             # Cosine similarity
   "Matrix",          # Sparse matrices
   "dynamicTreeCut",  # Dynamic tree cutting for clustering
-  "readobj"          # Reading 3D mesh files (.obj format)
+  "readobj",         # Reading 3D mesh files (.obj format)
+  "foreach",         # Parallel for loops
+  "doSNOW"           # Parallel backend for foreach (cross-platform, supports progress bars)
 )
 
 # Packages from GitHub/Natverse
@@ -64,7 +67,6 @@ library(nat)
 library(duckdb)
 library(plotly)
 library(nat.nblast)
-library(doMC)
 library(ggdendro)
 library(heatmaply)
 library(pheatmap)
@@ -78,15 +80,18 @@ library(lsa)
 library(Matrix)
 library(dynamicTreeCut)
 library(readobj)
+library(foreach)
+library(doSNOW)
 library(influencer)
-
+library(nat.flybrains)
 cat("✓ Core packages loaded\n")
 
 # Set up parallelisation
 numCores <- parallel::detectCores()
-cores <- max(1,numCores-1)
-registerDoMC(cores)
-cat("Using ", cores, " cores")
+cores <- max(1, numCores - 1)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+cat("Using", cores, "cores for parallel processing\n")
 
 # Python/GCS packages (conditional)
 # ----------------------------------
