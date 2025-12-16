@@ -424,7 +424,7 @@ As noted before, neuropils are just guides: the real way to define Calyx neurons
 # Get kenyon cell ids
 kc_ids <- meta %>%
   filter(cell_class == "kenyon_cell") %>%
-  pull(id)
+  pull(.data[[paste0(dataset, "_id")]])
 
 # Count outputs per neuron
 mb_outputs <- mb_synapses %>%
