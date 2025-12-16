@@ -5,20 +5,53 @@
 # Core R packages
 # ---------------
 packages_core <- c(
-  "arrow",      # Reading feather/parquet files
-  "tidyverse",  # Data manipulation and plotting
-  "ggplot2",    # Plotting
-  "patchwork",  # Combining plots
-  "nat",        # Neuron morphology analysis
-  "nat.nblast", # compare neuron morphologies
-  "plotly",     # interactive plots
-  "duckdb"      # SQL database for efficient Parquet queries
+  "arrow",           # Reading feather/parquet files
+  "tidyverse",       # Data manipulation and plotting
+  "ggplot2",         # Plotting
+  "patchwork",       # Combining plots
+  "nat",             # Neuron morphology analysis
+  "nat.nblast",      # compare neuron morphologies
+  "plotly",          # Interactive plots
+  "duckdb",          # SQL database for efficient Parquet queries
+  "ggdendro",        # Dendrogram visualization
+  "heatmaply",       # Interactive heatmaps with dendrograms
+  "pheatmap",        # Static heatmaps
+  "umap",            # Dimensionality reduction (Tutorial 04)
+  "uwot",            # UMAP implementation (Tutorial 03)
+  "htmlwidgets",     # Save interactive plots as HTML
+  "igraph",          # Network analysis
+  "ggraph",          # Network visualization with ggplot2
+  "tidygraph",       # Tidy network analysis
+  "lsa",             # Cosine similarity
+  "Matrix",          # Sparse matrices
+  "dynamicTreeCut",  # Dynamic tree cutting for clustering
+  "readobj"          # Reading 3D mesh files (.obj format)
 )
 
-# Install if needed
+# Packages from GitHub/Natverse
+# ------------------------------
+packages_github <- c(
+  "natverse/influencer"  # Indirect connectivity analysis
+)
+
+# Install core packages if needed
 for (pkg in packages_core) {
   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
     install.packages(pkg)
+  }
+}
+
+# Install GitHub packages if needed
+if (!require("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
+library(remotes)
+
+for (pkg in packages_github) {
+  pkg_name <- basename(pkg)
+  if (!require(pkg_name, character.only = TRUE, quietly = TRUE)) {
+    cat("Installing", pkg, "from GitHub...\n")
+    remotes::install_github(pkg)
   }
 }
 
@@ -32,6 +65,20 @@ library(duckdb)
 library(plotly)
 library(nat.nblast)
 library(doMC)
+library(ggdendro)
+library(heatmaply)
+library(pheatmap)
+library(umap)
+library(uwot)
+library(htmlwidgets)
+library(igraph)
+library(ggraph)
+library(tidygraph)
+library(lsa)
+library(Matrix)
+library(dynamicTreeCut)
+library(readobj)
+library(influencer)
 
 cat("✓ Core packages loaded\n")
 
@@ -92,4 +139,30 @@ setup_gcs_access <- function() {
   }
 
   cat("✓ GCS access configured\n")
+
+  # Suppress Python FutureWarnings from pandas
+  if (py_module_available("warnings")) {
+    py_run_string("import warnings; warnings.filterwarnings('ignore', category=FutureWarning)")
+    py_run_string("import warnings; warnings.filterwarnings('ignore', category=DeprecationWarning)")
+    cat("✓ Python warnings suppressed\n")
+  }
 }
+
+# Warning Suppression
+# -------------------
+# Suppress common R warnings that clutter tutorial output
+
+# Suppress summarise() grouping messages
+options(dplyr.summarise.inform = FALSE)
+
+# Suppress namespace conflict messages
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+})
+
+# Suppress specific ggplot2 warnings
+options(ggplot2.continuous.colour = "viridis")
+options(ggplot2.continuous.fill = "viridis")
+
+cat("✓ Warning suppression configured\n")
