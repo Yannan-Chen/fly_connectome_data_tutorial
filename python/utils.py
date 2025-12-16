@@ -1,6 +1,6 @@
 """
-Setup and Helper Functions for Python Fly Connectome Tutorials
-===============================================================
+Utility Functions for Python Fly Connectome Tutorials
+======================================================
 
 This module provides:
 - Common package imports
@@ -9,7 +9,7 @@ This module provides:
 - Plotting utilities
 
 Import this at the start of each tutorial notebook:
-    from setup_helpers import *
+    from utils import *
 """
 
 # ==============================================================================
