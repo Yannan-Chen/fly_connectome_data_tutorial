@@ -115,6 +115,7 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 - **[navis-flybrains](https://github.com/navis-org/navis-flybrains)** - Coordinate transforms and template brains
 - **[ConnectomeInfluenceCalculator](https://zenodo.org/records/17693838)** - Quantify influence between sensory and effector neurons
 - **[cocoa](https://github.com/flyconnectome/cocoa)** - Compare inter/intra-dataset connectivity
+-**[CAVEclient](https://github.com/CAVEconnectome/CAVEclient)** - Live connectome dataset annotation and tracking (for flies: FAFB, BANC, FANC)
   
 <p align="center">
   <img src="inst/images/natverse_promotion.png" alt="natverse - NeuroAnatomy Toolbox for R" width="70%">
