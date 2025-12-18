@@ -261,6 +261,7 @@ gsutil ls -lh gs://sjcabs_2025_data/banc/banc_746_synapses.feather
 This tutorial follows a progressive learning path designed to take about 2 hours for the core content, with optional extensions for deeper exploration.
 
 ### Tutorial 01: Data Access (30 minutes)
+**[R version](R/01_data_access.Rmd) | [Python version](python/fly_connectome_01_data_access.ipynb)**
 
 **Core Tutorial:**
 - Understanding file formats (Feather vs Parquet)
@@ -274,6 +275,7 @@ This tutorial follows a progressive learning path designed to take about 2 hours
 - Compare biological vs technical differences between datasets
 
 ### Tutorial 02: Neuron Morphology (30 minutes)
+**[R version](R/02_neuron_morphology.Rmd) | [Python version](python/fly_connectome_02_neuron_morphology.ipynb)**
 
 **Core Tutorial:**
 - Loading and visualizing 3D neuron skeletons (.swc files)
@@ -291,6 +293,7 @@ This tutorial follows a progressive learning path designed to take about 2 hours
   - Available for FAFB, MANC, maleCNS (not yet BANC)
 
 ### Tutorial 03: Connectivity Analyses (40 minutes)
+**[R version](R/03_connectivity_analyses.Rmd) | [Python version](python/fly_connectome_03_connectivity_analyses.ipynb)**
 
 **Core Tutorial:**
 - Loading and querying edgelists (connectivity matrices)
@@ -306,6 +309,7 @@ This tutorial follows a progressive learning path designed to take about 2 hours
 - Morphological analysis of connectivity clusters
 
 ### Tutorial 04: Indirect Connectivity and Influence (20 minutes)
+**[R version](R/04_indirect_connectivity.Rmd) | [Python version](python/fly_connectome_04_indirect_connectivity.ipynb)**
 
 **Core Tutorial:**
 - Understanding influence scores and random walks through connectomes

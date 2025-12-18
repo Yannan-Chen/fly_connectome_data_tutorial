@@ -13,8 +13,8 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
 
 # Dataset selection
-dataset <- "banc_746"
-dataset_id <- "banc_746_id"
+dataset <- "malecns_09"
+dataset_id <- "malecns_09_id"
 
 # Data location
 data_path <- "gs://sjcabs_2025_data"
@@ -37,11 +37,14 @@ save_plot <- function(plot_obj, name, width = 10, height = 6) {
 # Load packages and helper functions (warning suppression is in packages.R)
 source("setup/packages.R")
 source("setup/functions.R")
+
+# Installs all dependencies into r-reticulate environment,do once.
+# influencer::install_python_influence_calculator()
 ```
 
 ## Introduction
 
-This tutorial introduces the **influence metric**, a measure of indirect connectivity developed and used in the [BANC paper](https://www.biorxiv.org/content/10.1101/2024.12.28.630584v1) (Eckstein et al., 2025).
+This tutorial introduces the **influence metric**, a measure of indirect connectivity developed and used in the [BANC paper](https://www.biorxiv.org/content/10.1101/2024.12.28.630584v1) (Bates et al., 2025). The approach and the [ConenctomeInfluenceCalculator](https://zenodo.org/records/17693838) was developed by [Zaki Ajabi](https://scholar.google.com/citations?user=DQSPi2kAAAAJ&hl=en) and [Jan Drugowitsch](https://scholar.google.com/citations?user=fCUx98wAAAAJ&hl=en).
 
 ### What is Influence?
 
@@ -81,7 +84,6 @@ Where W̃ is rescaled to ensure network stability. Results are log-transformed w
 
 One way in which we can use these indirect measures, is to understand how sensory neurons from across the body, and effector neuron that project across the body, relate to other neurons of the central nervous system.
 
-
 This can help us interpret what "deeper" neurons "care" about, or what behaviours they may inform.
 
 As a reminder, sensory and effector neurons, our `cell_class` and `cell_sub_class` labels can tell us about innervation of exterior body parts.
@@ -94,11 +96,15 @@ As well as internal ones.
 
 <p align="center">
   <img src="../inst/images/fly_body_parts_2.png" alt="Fly body parts detailed view" width="80%">
-</p>vv
+</p>
+
+# Core tutorial
 
 ## Setup and Load Data
 
-First, we need to load the influencer package and our data:
+Make sure `influencer` is installed, and that you have installed what we need for the python backend, with: `install_python_influence_calculator()` (should just need to run once).
+
+First, we need to our data:
 
 ```{r packages}
 # Setup GCS access if needed
@@ -110,15 +116,11 @@ if (use_gcs) {
 ```{r load_data}
 # Load metadata
 meta_path <- construct_path(data_path, dataset, "meta")
-cat("Loading metadata from:", meta_path, "\n")
 meta <- read_feather_gcs(meta_path, use_gcs = use_gcs)
-cat("Loaded", nrow(meta), "neurons\n")
 
 # Load edgelist
 edgelist_path <- construct_path(data_path, dataset, "edgelist_simple")
-cat("\nLoading edgelist from:", edgelist_path, "\n")
 edgelist_simple <- read_feather_gcs(edgelist_path, use_gcs = use_gcs)
-cat("Loaded", nrow(edgelist_simple), "connections\n")
 
 # Show edgelist structure
 cat("\nEdgelist columns:", paste(colnames(edgelist_simple), collapse = ", "), "\n")
@@ -133,7 +135,6 @@ To speed up influence calculations, we filter out weak connections (fewer than 5
 # Filter for connections with at least 5 synapses
 edgelist_filtered <- edgelist_simple %>%
   filter(count >= 5)
-
 cat("Original connections:", nrow(edgelist_simple), "\n")
 cat("After filtering (≥5 synapses):", nrow(edgelist_filtered), "\n")
 cat("Retained:", round(100 * nrow(edgelist_filtered) / nrow(edgelist_simple), 1), "%\n")
@@ -155,7 +156,6 @@ Let's examine how sensory neurons influence mushroom body dopaminergic neurons. 
 sensory_neurons <- meta %>%
   filter(flow == "afferent") %>%
   distinct(!!sym(dataset_id), cell_sub_class, cell_type)
-
 cat("Found", nrow(sensory_neurons), "sensory neurons\n")
 
 # Get unique sensory sub-classes
@@ -163,7 +163,6 @@ sensory_sub_classes <- sensory_neurons %>%
   pull(cell_sub_class) %>%
   unique() %>%
   sort()
-
 cat("Sensory sub-classes (n=", length(sensory_sub_classes), "):\n")
 cat(paste(head(sensory_sub_classes, 10), collapse = ", "), "\n\n")
 
@@ -171,7 +170,6 @@ cat(paste(head(sensory_sub_classes, 10), collapse = ", "), "\n\n")
 mb_dopamine_neurons <- meta %>%
   filter(cell_class == "mushroom_body_dopaminergic_neuron") %>%
   distinct(!!sym(dataset_id), cell_sub_class, cell_type)
-
 cat("Found", nrow(mb_dopamine_neurons), "mushroom body dopamine neurons\n")
 
 # Get unique MB dopamine types
@@ -179,7 +177,6 @@ mb_da_types <- mb_dopamine_neurons %>%
   pull(cell_type) %>%
   unique() %>%
   sort()
-
 cat("MB dopamine types (n=", length(mb_da_types), "):\n")
 cat(paste(head(mb_da_types, 10), collapse = ", "), "\n")
 ```
@@ -187,9 +184,6 @@ cat(paste(head(mb_da_types, 10), collapse = ", "), "\n")
 ### Set Up Influence Calculator
 
 ```{r setup_influence}
-cat("Initializing influence calculator...\n")
-cat("This may take a few minutes for large networks...\n\n")
-
 # Prepare data for influencer package
 # The Python influencer package expects specific formats:
 # - edgelist with pre, post, count (or norm) columns
@@ -217,20 +211,15 @@ if ("pre" %in% edgelist_cols && "post" %in% edgelist_cols) {
 # Prepare metadata with root_id column
 meta_for_ic <- meta %>%
   rename(root_id = !!sym(dataset_id))
-
 cat("  Edgelist:", nrow(edgelist_for_ic), "connections\n")
 cat("  Metadata:", nrow(meta_for_ic), "neurons\n\n")
 
 # Initialize the influence calculator
 # This uses the Python backend (ConnectomeInfluenceCalculator)
-cat("Initializing calculator (this may take several minutes)...\n")
-
 ic_dataset <- influence_calculator_py(
   edgelist_simple = edgelist_for_ic,
   meta = meta_for_ic
 )
-
-cat("Network ready for influence calculations\n")
 ```
 
 ### Calculate Influence Scores
@@ -238,7 +227,6 @@ cat("Network ready for influence calculations\n")
 Now we calculate influence scores from each sensory sub-class to all MB dopaminergic neurons:
 
 ```{r calculate_influence}
-cat("Calculating influence scores for", length(sensory_sub_classes), "sensory sub-classes...\n")
 cat("Note: This will take time - influence calculations involve matrix operations on the full network\n\n")
 
 # Get MB dopamine neuron IDs for filtering
@@ -253,7 +241,6 @@ for (i in seq_along(sensory_sub_classes)) {
 
   # Progress indicator
   if (i %% 5 == 0 || i == length(sensory_sub_classes)) {
-    cat("Processing", i, "of", length(sensory_sub_classes), ":", sensory_sub_class, "\n")
   }
 
   # Get IDs for this sensory sub-class
@@ -282,14 +269,10 @@ for (i in seq_along(sensory_sub_classes)) {
   all_influence_scores_list[[sensory_sub_class]] <- influence_scores
 }
 
-
 # Combine all results
 all_influence_scores <- bind_rows(all_influence_scores_list)
 
-cat("Total influence scores calculated:", nrow(all_influence_scores), "\n")
-
 # Show sample of results
-cat("\nSample of influence scores:\n")
 all_influence_scores %>%
   select(source, id, `Influence_score_(unsigned)`, adjusted_influence, target_type) %>%
   head(10)
@@ -308,15 +291,13 @@ all_influence_scores_ct <- all_influence_scores %>%
    summarise(
     influence = sum(`Influence_score_(unsigned)`, na.rm = TRUE),
     adjusted_influence = log(sum(influence, na.rm = TRUE))+24,
+    adjusted_influence = ifelse(is.infinite(adjusted_influence),0,adjusted_influence),
     n_targets = n(),
     .groups = "drop"
   ) %>%
   filter(!is.na(target_type), !is.na(source_class))
 
-cat("Aggregated to", nrow(all_influence_scores_ct), "source-target type pairs\n")
-
 # Show top influences
-cat("\nTop 10 sensory → dopamine influences:\n")
 all_influence_scores_ct %>%
   arrange(desc(adjusted_influence)) %>%
   select(source_class, target_type, adjusted_influence, n_targets) %>%
@@ -337,7 +318,6 @@ influence_matrix <- all_influence_scores_ct %>%
 influence_matrix[is.na(influence_matrix)] <- 0
 influence_matrix[is.infinite(influence_matrix)] <- 0
 influence_matrix <- influence_matrix[rowSums(influence_matrix)>100,]
-cat("Heatmap matrix dimensions:", nrow(influence_matrix), "x", ncol(influence_matrix), "\n\n")
 
 # We want to ask what the most prominent influences onto DANs is
 # So we can minmax normalise influence_matrix
@@ -349,9 +329,9 @@ influence_matrix_norm[is.na(influence_matrix_norm)] <- 0
 pheatmap(
   influence_matrix_norm,
   clustering_method = "ward.D2",
-  color = colorRampPalette(c("white", "yellow", "orange", "red", "darkred"))(256),
-  show_rownames = FALSE,
-  show_colnames = FALSE,
+  # color = colorRampPalette(c("navy", "blue", "cyan", "yellow", "orange", "red"))(256),
+  show_rownames = TRUE,
+  show_colnames = TRUE,
   main = "Sensory Influence on MB Dopaminergic Neurons",
   filename = file.path(img_dir, paste0(dataset, "_influence_heatmap.png")),
   width = 10,
@@ -363,11 +343,11 @@ p_influence_heatmap <- heatmaply(
   influence_matrix_norm,
   dendrogram = "none",
   hclust_method = "ward.D2",
-  colors = colorRampPalette(c("navy", "blue", "cyan", "yellow", "orange", "red"))(256),
+  #colors = colorRampPalette(c("navy", "blue", "cyan", "yellow", "orange", "red"))(256),
   main = "Sensory Influence on MB Dopaminergic Neurons",
   xlab = "Target: MB Dopamine Neuron Type",
   ylab = "Source: Sensory Sub-Class",
-  showticklabels = c(FALSE, FALSE),  # Hide axis text, show on hover
+  showticklabels = c(TRUE, TRUE), 
   hide_colorbar = FALSE,
   fontsize_row = 8,
   fontsize_col = 8,
@@ -401,9 +381,6 @@ influence_matrix_umap <- all_influence_scores_n %>%
   pivot_wider(names_from = source, values_from = adjusted_influence, values_fill = 0) %>%
   column_to_rownames("id") %>%
   as.matrix()
-
-cat("UMAP input matrix:", nrow(influence_matrix_umap), "neurons x",
-    ncol(influence_matrix_umap), "sensory sub-classes\n\n")
 
 # Run UMAP (explicitly use umap package, not uwot)
 set.seed(42)
@@ -460,6 +437,304 @@ save_plot(p_umap_type, paste0(dataset, "_influence_umap_type"))
 print(p_umap_type)
 ```
 
+# Your Turn: New challenge
+
+Re-run example 1 but switch from BANC to maleCNS data. What do you notice? You can thn try a different population of neurons, rather than dopamine neurons of the mushroom body, try looking at sensory influence onto mushroom body output neurons, MBONs (`grpel("MBON",cell_type)`).
+
+```{r exercise, eval=FALSE}
+# To work with a different dataset, change the dataset variable at the top:
+# dataset <- "malecns_09"
+# dataset_id <- "malecns_09_id"
+
+# Then re-run the entire notebook to see how the results differ!
+# Differences likely reflect differences in annotation between projects
+```
+
+# Extensions
+
+Below are more involved analyses, with longer compute times. Working through these will show you how to think about sensory and effector influence together, plot a UMAP based on influence scores, and interpret the biology of our results.
+
+## Extension 1: Specific olfactory channel influence onto pC1 neurons in BANC and maleCNS
+
+pC1 neurons are a small cluster of sexually dimorphic, doublesex/fruitless-positive neurons in the Drosophila central brain that act as a hub for integrating social cues and controlling sex-specific internal state and behavior. In the male literature they are often referred to as the P1 cluster; in both sexes they sit at the top of a hierarchy that gates courtship, aggression, and related states.
+
+Since BANC is a female nervous system and maleCNs is a male one, we can directly compare information flow onto this sexually dimorphic type, and compare.
+
+We are interested in seeing which antennal lobe glomeruli (olfactory and thermosensory), and which gustatory neuron cell sub classes influence pC1 neurons, in both data sets.
+
+First let's read the BANC and maleCNS metadata, and select our pC1 neuron by doing a regex search of "pC1" on the `cell_type` column.
+
+```{r load_datasets_for_pc1}
+# Data set 1: BANC (female)
+dataset1 <- "banc_746"
+dataset_id1 <- "banc_746_id"
+meta_path1 <- construct_path(data_path, dataset1, "meta")
+meta1 <- read_feather_gcs(meta_path1, use_gcs = use_gcs) %>%
+  rename(root_id = !!sym(dataset_id1))
+edgelist_path1 <- construct_path(data_path, dataset1, "edgelist_simple")
+edgelist_simple1 <- read_feather_gcs(edgelist_path1, use_gcs = use_gcs) %>%
+  filter(norm >= 0.0001)
+
+# Data set 2: maleCNS (male)
+dataset2 <- "malecns_09"
+dataset_id2 <- "malecns_09_id"
+meta_path2 <- construct_path(data_path, dataset2, "meta")
+meta2 <- read_feather_gcs(meta_path2, use_gcs = use_gcs) %>%
+  rename(root_id = !!sym(dataset_id2))
+edgelist_path2 <- construct_path(data_path, dataset2, "edgelist_simple")
+edgelist_simple2 <- read_feather_gcs(edgelist_path2, use_gcs = use_gcs) %>%
+  filter(norm >= 0.0001)
+```
+
+We can then prime our edgelists for influence score calculation, pruning out weak connections, this time taking `norm>=0.0001`. We think `norm` will be a bit more similar between datasets, `count` may vary more.
+
+```{r setup_influence_calculators}
+# Initialize influence calculators
+ic_dataset1 <- influence_calculator_py(
+  edgelist_simple = edgelist_simple1,
+  meta = meta1
+)
+ic_dataset2 <- influence_calculator_py(
+  edgelist_simple = edgelist_simple2,
+  meta = meta2
+)
+```
+
+Now let's calculate influence scores from all cell types starting with `^ORN|^THRN|^HRN`, and all cell types which match for `gustatory` in `cell_function`.
+
+```{r calculate_pc1_influence}
+# Dataset 1 (BANC): Find pC1 neurons and sensory neurons
+pc1_meta1 <- meta1 %>%
+  filter(grepl("^pC1|^P1_", cell_type, ignore.case = TRUE))
+sens_meta1 <- meta1 %>%
+  filter(
+    !is.na(cell_type),
+    grepl("sensory",super_class),
+    !grepl("^IN|^MN",cell_type),
+    grepl("^ORN|^THRN|^HRN|^TRN", cell_type) |
+    grepl("gustatory", cell_function, ignore.case = TRUE)
+  ) %>%
+  distinct(cell_type, .keep_all = TRUE)
+
+# Dataset 2 (maleCNS): Find pC1 neurons and sensory neurons
+pc1_meta2 <- meta2 %>%
+  filter(grepl("^pC1|^P1_", cell_type, ignore.case = TRUE))
+sens_meta2 <- meta2 %>%
+  filter(
+    !is.na(cell_type),
+    grepl("sensory",super_class),
+    !grepl("^IN|^MN",cell_type),
+    grepl("^ORN|^THRN|^HRN|^TRN", cell_type) |
+    grepl("gustatory", cell_function, ignore.case = TRUE)
+  ) %>%
+  distinct(cell_type, .keep_all = TRUE)
+
+# Get pC1 neuron IDs for filtering
+pc1_ids1 <- pc1_meta1 %>% pull(root_id)
+pc1_ids2 <- pc1_meta2 %>% pull(root_id)
+
+# Calculate influence from each sensory cell type to pC1 neurons
+# Dataset 1 (BANC)
+pc1_influence_list1 <- list()
+
+for (i in seq_len(nrow(sens_meta1))) {
+  sensory_type <- sens_meta1$cell_type[i]
+
+  # Get all neurons of this cell type
+  sensory_ids <- meta1 %>%
+    filter(cell_type == sensory_type) %>%
+    pull(root_id)
+
+  if (length(sensory_ids) == 0) next
+
+  if (i %% 10 == 0 || i == nrow(sens_meta1)) {
+  }
+
+  # Calculate influence
+  influence_scores <- calculate_influence_py(ic_dataset1, sensory_ids) %>%
+    filter(id %in% pc1_ids1) %>%
+    mutate(
+      source_type = sensory_type,
+      dataset = "BANC"
+    ) %>%
+    left_join(
+      pc1_meta1 %>% select(id = root_id, target_type = cell_type),
+      by = "id"
+    )
+
+  pc1_influence_list1[[sensory_type]] <- influence_scores
+}
+
+pc1_influence1 <- bind_rows(pc1_influence_list1)
+
+# Dataset 2 (maleCNS)
+pc1_influence_list2 <- list()
+
+for (i in seq_len(nrow(sens_meta2))) {
+  sensory_type <- sens_meta2$cell_type[i]
+
+  # Get all neurons of this cell type
+  sensory_ids <- meta2 %>%
+    filter(cell_type == sensory_type) %>%
+    pull(root_id)
+
+  if (length(sensory_ids) == 0) next
+
+  if (i %% 10 == 0 || i == nrow(sens_meta2)) {
+  }
+
+  # Calculate influence
+  influence_scores <- calculate_influence_py(ic_dataset2, sensory_ids) %>%
+    filter(id %in% pc1_ids2) %>%
+    mutate(
+      source_type = sensory_type,
+      dataset = "maleCNS"
+    ) %>%
+    left_join(
+      pc1_meta2 %>% select(id = root_id, target_type = cell_type),
+      by = "id"
+    )
+
+  pc1_influence_list2[[sensory_type]] <- influence_scores
+}
+
+pc1_influence2 <- bind_rows(pc1_influence_list2)
+
+# Combine both datasets
+pc1_influence_all <- bind_rows(pc1_influence1, pc1_influence2)
+cat("\nTotal influence scores:", nrow(pc1_influence_all), "\n")
+cat("Unique sensory types in BANC:", length(unique(pc1_influence1$source_type)), "\n")
+cat("Unique sensory types in maleCNS:", length(unique(pc1_influence2$source_type)), "\n")
+```
+
+We can now visualise two heatmaps, one for BANC and one for maleCNS, of chemosensory influence onto pC1 neurons by cell type, and identify the sensory channels that matter most to them.
+
+```{r pc1_heatmaps, fig.width=14, fig.height=10}
+# Aggregate influence by source and target cell type
+pc1_influence_ct <- pc1_influence_all %>%
+  group_by(dataset, source_type, target_type) %>%
+  summarise(
+    influence = sum(`Influence_score_(unsigned)`, na.rm = TRUE),
+    adjusted_influence = log(sum(influence, na.rm = TRUE)) + 24,
+    adjusted_influence = ifelse(is.infinite(adjusted_influence),0,adjusted_influence),
+    n_connections = n(),
+    .groups = "drop"
+  ) %>%
+  filter(!is.na(source_type), !is.na(target_type))
+
+# Create separate matrices for each dataset
+create_pc1_matrix <- function(data, dataset_name) {
+  matrix_data <- data %>%
+    filter(dataset == dataset_name) %>%
+    select(source_type, target_type, adjusted_influence) %>%
+    pivot_wider(
+      names_from = target_type,
+      values_from = adjusted_influence,
+      values_fill = 0
+    ) %>%
+    column_to_rownames("source_type") %>%
+    as.matrix()
+
+  # Clean matrix
+  matrix_data[is.na(matrix_data)] <- 0
+  matrix_data[is.infinite(matrix_data)] <- 0
+  matrix_data <- matrix_data[rowSums(matrix_data)>50,]
+
+  # Filter rows with minimal influence
+  if (nrow(matrix_data) > 0) {
+    matrix_data <- matrix_data[rowSums(matrix_data) > 10, , drop = FALSE]
+  }
+
+  return(matrix_data)
+}
+
+# Create matrices
+pc1_matrix1 <- create_pc1_matrix(pc1_influence_ct, "BANC")
+pc1_matrix2 <- create_pc1_matrix(pc1_influence_ct, "maleCNS")
+
+# Min-max normalize by column (per pC1 target type)
+normalize_matrix <- function(mat) {
+  if (nrow(mat) == 0 || ncol(mat) == 0) return(mat)
+
+  mat_norm <- apply(mat, MARGIN = 2,
+                   FUN = function(x) {
+                     if (max(x, na.rm = TRUE) == min(x, na.rm = TRUE)) {
+                       return(rep(0, length(x)))
+                     }
+                     (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+                   })
+  mat_norm[is.infinite(mat_norm)] <- 0
+  mat_norm[is.na(mat_norm)] <- 0
+  return(mat_norm)
+}
+
+pc1_matrix1_norm <- normalize_matrix(pc1_matrix1)
+pc1_matrix2_norm <- normalize_matrix(pc1_matrix2)
+
+# Create static heatmap for BANC
+pheatmap(
+  pc1_matrix1_norm,
+  clustering_method = "ward.D2",
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  main = "BANC (Female): Chemosensory Influence on pC1 Neurons",
+  filename = file.path(img_dir, "banc_pc1_chemosensory_influence.png"),
+  width = 10,
+  height = 16,
+  fontsize = 8,
+  fontsize_row = 7,
+  fontsize_col = 9
+)
+
+# Create static heatmap for maleCNS
+pheatmap(
+  pc1_matrix2_norm,
+  clustering_method = "ward.D2",
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  main = "maleCNS (Male): Chemosensory Influence on pC1/P1 Neurons",
+  filename = file.path(img_dir, "malecns_pc1_chemosensory_influence.png"),
+  width = 10,
+  height = 16,
+  fontsize = 8,
+  fontsize_row = 7,
+  fontsize_col = 9
+)
+
+# Create interactive side-by-side heatmaps using heatmaply
+# For BANC
+p_pc1_banc <- heatmaply(
+    pc1_matrix1_norm,
+    dendrogram = "row",
+    hclust_method = "ward.D2",
+    main = "BANC (Female): Chemosensory → pC1",
+    xlab = "Target: pC1 Neuron Type",
+    ylab = "Source: Sensory Type",
+    showticklabels = c(TRUE, TRUE),
+    hide_colorbar = FALSE,
+    fontsize_row = 7,
+    fontsize_col = 9,
+    key.title = "Normalized\nInfluence"
+  )
+print(p_pc1_banc)
+
+# For maleCNS
+p_pc1_malecns <- heatmaply(
+    pc1_matrix2_norm,
+    dendrogram = "row",
+    hclust_method = "ward.D2",
+    main = "maleCNS (Male): Chemosensory → pC1/P1",
+    xlab = "Target: pC1/P1 Neuron Type",
+    ylab = "Source: Sensory Type",
+    showticklabels = c(TRUE, TRUE),
+    hide_colorbar = FALSE,
+    fontsize_row = 7,
+    fontsize_col = 9,
+    key.title = "Normalized\nInfluence"
+  )
+print(p_pc1_malecns)
+```
+
 ## Example 2: Abdominal neurons by effector control
 
 Let's look at another example. Rather than calculating influence between sensors and a target population, let's define a source population and calculate influence to effector neurons, i.e. motor and endocrine neurons.
@@ -475,14 +750,11 @@ dataset_base <- sub("_[0-9]+$", "", dataset)
 subset_dir <- file.path(data_path, dataset_base, subset_name)
 abdominal_edgelist_path <- file.path(subset_dir, paste0(dataset, "_", subset_name, "_simple_edgelist.feather"))
 
-cat("Reading abdominal neuromere edgelist from:", abdominal_edgelist_path, "\n")
-
 # Read the edgelist for this subset
 abdominal_edgelist <- read_feather_gcs(abdominal_edgelist_path, use_gcs = use_gcs)
 
 # Get unique neuron IDs from pre and post columns
 abdominal_ids <- unique(c(abdominal_edgelist$pre, abdominal_edgelist$post))
-cat("Found", length(abdominal_ids), "unique neurons in abdominal ganglion edgelist\n")
 
 # Get metadata for these neurons
 abdominal_neurons <- meta %>%
@@ -493,8 +765,6 @@ abdominal_source_neurons <- abdominal_neurons %>%
   filter(is.na(flow) | !flow %in% c("afferent", "efferent"), !super_class %in% c("ascending","descending","sensory")) %>%
   distinct(!!sym(dataset_id), cell_type, cell_class, cell_sub_class)
 
-cat("Found", nrow(abdominal_source_neurons), "abdominal intrinsic neurons (excluding afferent/efferent)\n")
-
 # Get their IDs
 abdominal_source_ids <- abdominal_source_neurons %>%
   pull(!!sym(dataset_id))
@@ -503,8 +773,6 @@ abdominal_source_ids <- abdominal_source_neurons %>%
 effector_neurons <- meta %>%
   filter(flow == "efferent") %>%
   distinct(!!sym(dataset_id), cell_type, cell_class, cell_sub_class)
-
-cat("Found", nrow(effector_neurons), "effector neurons\n")
 
 # Get effector IDs for filtering
 effector_ids <- effector_neurons %>%
@@ -516,7 +784,6 @@ However, we will actually want to use the full edgelist for calculating influenc
 Let's now calculate influence from each source neuron, to every effector neuron.
 
 ```{r calculate_abdominal_influence}
-cat("Calculating influence from", length(abdominal_source_ids), "abdominal neurons to effectors...\n")
 abdominal_source_cts <- abdominal_source_neurons %>%
   filter(!is.na(cell_type)) %>%
   distinct(cell_type) %>%
@@ -532,7 +799,6 @@ for (i in seq_along(abdominal_source_cts)) {
 
   # Progress indicator
   if (i %% 50 == 0 || i == length(abdominal_source_cts)) {
-    cat("Processing", i, "of", length(abdominal_source_cts), "cell types\n")
   }
 
   # Calculate influence from this individual abdominal neuron
@@ -557,8 +823,6 @@ for (i in seq_along(abdominal_source_cts)) {
 
 # Combine all results
 abdominal_influence <- bind_rows(abdominal_influence_list)
-cat("Calculated influence for", nrow(abdominal_influence), "abdominal → effector pairs\n")
-cat("From", length(unique(abdominal_influence$source)), "source cell types to", length(unique(abdominal_influence$id)), "target neurons\n")
 ```
 
 We can again visualise this result as a heatmap, collapsing our sources by cell type, and recalculating our adjusted influence score (remember, influence is an additive metric! And then our adjusted influence is a log transform after that).
@@ -573,13 +837,12 @@ abdominal_influence_ct <- abdominal_influence %>%
   summarise(
     influence = sum(`Influence_score_(unsigned)`, na.rm = TRUE),
     adjusted_influence = log(sum(influence, na.rm = TRUE)) + 24,
+    adjusted_influence = ifelse(is.infinite(adjusted_influence),0,adjusted_influence),
     n_targets = n(),
     .groups = "drop"
   ) %>%
   distinct(source_type, target_sub_class, .keep_all = TRUE) %>%
   filter(!is.na(target_sub_class), !is.na(source_type))
-
-cat("Aggregated to", nrow(abdominal_influence_ct), "source-target type pairs\n")
 
 # Create matrix for heatmap
 abdominal_matrix <- abdominal_influence_ct %>%
@@ -587,12 +850,9 @@ abdominal_matrix <- abdominal_influence_ct %>%
   pivot_wider(names_from = target_sub_class, values_from = adjusted_influence, values_fill = 0) %>%
   column_to_rownames("source_type") %>%
   as.matrix()
-
 abdominal_matrix[is.na(abdominal_matrix)] <- 0
 abdominal_matrix[is.infinite(abdominal_matrix)] <- 0
 abdominal_matrix <- abdominal_matrix[rowSums(abdominal_matrix) > 50, ]
-
-cat("Heatmap matrix dimensions:", nrow(abdominal_matrix), "x", ncol(abdominal_matrix), "\n\n")
 
 # Min-max normalize by column (per effector type)
 abdominal_matrix_norm <- apply(X = abdominal_matrix, MARGIN = 2,
@@ -604,7 +864,6 @@ abdominal_matrix_norm[is.na(abdominal_matrix_norm)] <- 0
 pheatmap(
   abdominal_matrix_norm,
   clustering_method = "ward.D2",
-  color = colorRampPalette(c("navy", "blue", "cyan", "yellow", "orange", "red"))(256),
   show_rownames = FALSE,
   show_colnames = TRUE,
   main = "Abdominal Neuron Influence on Effector Neurons",
@@ -618,7 +877,6 @@ p_abdominal_heatmap <- heatmaply(
   abdominal_matrix_norm,
   dendrogram = "none",
   hclust_method = "ward.D2",
-  colors = colorRampPalette(c("navy", "blue", "cyan", "yellow", "orange", "red"))(256),
   main = "Abdominal Neuron Influence on Effector Neurons",
   xlab = "Target: Effector Neuron Type",
   ylab = "Source: Abdominal Neuron Type",
@@ -640,7 +898,6 @@ sensory_sub_classes <- sensory_neurons %>%
   pull(cell_sub_class) %>%
   unique() %>%
   sort()
-cat("Calculating influence from", length(sensory_sub_classes), "sensory sub-classes to effectors...\n")
 
 # Calculate influence for each sensory sub-class
 sensory_effector_list <- list()
@@ -667,7 +924,6 @@ for (sensory_sub_class in sensory_sub_classes) {
 
 # Combine all results
 sensory_abdominal_influence <- bind_rows(sensory_effector_list)
-cat("Calculated influence for", nrow(sensory_abdominal_influence), "sensory → abdominal neuromere neuron pairs\n")
 
 # Aggregate by source and target cell type
 abdominal_influence_all <- sensory_abdominal_influence %>%
@@ -677,6 +933,7 @@ abdominal_influence_all <- sensory_abdominal_influence %>%
   summarise(
     influence = sum(`Influence_score_(unsigned)`, na.rm = TRUE),
     adjusted_influence = log(sum(influence, na.rm = TRUE)) + 24,
+    adjusted_influence = ifelse(is.infinite(adjusted_influence),0,adjusted_influence),
     n_targets = n(),
     .groups = "drop"
   ) %>%
@@ -703,11 +960,8 @@ influence_matrix <- abdominal_influence_all %>%
 influence_matrix[is.na(influence_matrix)] <- 0
 influence_matrix[is.infinite(influence_matrix)] <- 0
 influence_matrix <- influence_matrix[rowSums(influence_matrix) > 0, ]
-cat("Influence matrix:", nrow(influence_matrix), "abdominal types ×",
-    ncol(influence_matrix), "targets\n")
 
 # Run UMAP
-cat("Running UMAP...\n")
 umap_result <- uwot::umap(
   influence_matrix,
   n_neighbors = min(15, nrow(influence_matrix) - 1),
@@ -723,10 +977,7 @@ umap_df <- data.frame(
   UMAP2 = umap_result[, 2]
 )
 
-cat("UMAP complete with", nrow(umap_df), "abdominal cell types\n")
-
 # Perform hierarchical clustering
-cat("Performing hierarchical clustering...\n")
 dist_matrix <- dist(umap_result, method = "euclidean")
 hc <- hclust(dist_matrix, method = "ward.D2")
 
@@ -742,9 +993,7 @@ if (require(dynamicTreeCut, quietly = TRUE)) {
   # Fallback: cut tree at fixed height
   dynamic_clusters <- cutree(hc, k = min(8, ceiling(nrow(umap_df) / 5)))
 }
-
 umap_df$unordered_cluster <- factor(dynamic_clusters)
-cat("Found", length(unique(dynamic_clusters)), "clusters\n")
 
 # Calculate centroids of clusters
 centroids <- umap_df %>%
@@ -754,8 +1003,6 @@ centroids <- umap_df %>%
     UMAP2_centroid = mean(UMAP2),
     size = n()
   )
-
-cat("Cluster sizes:\n")
 print(centroids %>% arrange(desc(size)))
 
 # Calculate pairwise distances between centroids
@@ -811,7 +1058,6 @@ p_abdominal_umap <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = cluster,
     plot.subtitle = element_text(size = 11, hjust = 0.5),
     legend.position = "none"
   )
-
 save_plot(p_abdominal_umap, paste0(dataset, "_abdominal_functional_modules"))
 ggplotly(p_abdominal_umap, tooltip = "text")
 ```
@@ -827,7 +1073,6 @@ top25_sources <- abdominal_influence_all %>%
   head(25) %>%
   pull(target_sub_class)
 
-cat("Top 25 abdominal source types by influence:\n")
 print(top25_sources)
 
 # For each source type, calculate total adjusted influence per abdominal neuron
@@ -890,364 +1135,7 @@ print(p_facet_umap)
 
 We have successfully decomposed our neurons into potential "functional" modules, which would bear further investigation.
 
-## Example 3: Specific olfactory channel influence onto pC1 neurons in BANC and maleCNS
-
-pC1 neurons are a small cluster of sexually dimorphic, doublesex/fruitless-positive neurons in the Drosophila central brain that act as a hub for integrating social cues and controlling sex-specific internal state and behavior. In the male literature they are often referred to as the P1 cluster; in both sexes they sit at the top of a hierarchy that gates courtship, aggression, and related states.
-
-Since BANC is a female nervous system and maleCNs is a male one, we can directly compare information flow onto this sexually dimorphic type, and compare.
-
-We are interested in seeing which antennal lobe glomeruli (olfactory and thermosensory), and which gustatory neuron cell sub classes influence pC1 neurons, in both data sets.
-
-First let's read the BANC and maleCNS metadata, and select our pC1 neuron by doing a regex search of "pC1" on the `cell_type` column.
-
-```{r load_datasets_for_pc1}
-# Data set 1: BANC (female)
-dataset1 <- "banc_746"
-dataset_id1 <- "banc_746_id"
-meta_path1 <- construct_path(data_path, dataset1, "meta")
-cat("Loading BANC metadata from:", meta_path1, "\n")
-meta1 <- read_feather_gcs(meta_path1, use_gcs = use_gcs) %>%
-  rename(root_id = !!sym(dataset_id1))
-
-edgelist_path1 <- construct_path(data_path, dataset1, "edgelist_simple")
-cat("Loading BANC edgelist from:", edgelist_path1, "\n")
-edgelist_simple1 <- read_feather_gcs(edgelist_path1, use_gcs = use_gcs) %>%
-  filter(norm >= 0.0001)
-
-cat("BANC: Loaded", nrow(meta1), "neurons and", nrow(edgelist_simple1), "connections (norm ≥ 0.0001)\n\n")
-
-# Data set 2: maleCNS (male)
-dataset2 <- "malecns_09"
-dataset_id2 <- "malecns_09_id"
-meta_path2 <- construct_path(data_path, dataset2, "meta")
-cat("Loading maleCNS metadata from:", meta_path2, "\n")
-meta2 <- read_feather_gcs(meta_path2, use_gcs = use_gcs) %>%
-  rename(root_id = !!sym(dataset_id2))
-
-edgelist_path2 <- construct_path(data_path, dataset2, "edgelist_simple")
-cat("Loading maleCNS edgelist from:", edgelist_path2, "\n")
-edgelist_simple2 <- read_feather_gcs(edgelist_path2, use_gcs = use_gcs) %>%
-  filter(norm >= 0.0001)
-
-cat("maleCNS: Loaded", nrow(meta2), "neurons and", nrow(edgelist_simple2), "connections (norm ≥ 0.0001)\n")
-```
-
-We can then prime our edgelists for influence score calculation, pruning out weak connections, this time taking `norm>=0.0001`. We think `norm` will be a bit more similar between datasets, `count` may vary more.
-
-```{r setup_influence_calculators}
-cat("Setting up influence calculators for both datasets...\n\n")
-
-# Initialize influence calculators
-cat("Initializing BANC influence calculator...\n")
-ic_dataset1 <- influence_calculator_py(
-  edgelist_simple = edgelist_simple1,
-  meta = meta1
-)
-cat("✓ BANC calculator ready\n\n")
-
-cat("Initializing maleCNS influence calculator...\n")
-ic_dataset2 <- influence_calculator_py(
-  edgelist_simple = edgelist_simple2,
-  meta = meta2
-)
-cat("✓ maleCNS calculator ready\n")
-```
-
-Now let's calculate influence scores from all cell types starting with `^ORN|^THRN|^HRN`, and all cell types which match for `gustatory` in `cell_function`.
-
-```{r calculate_pc1_influence}
-# Dataset 1 (BANC): Find pC1 neurons and sensory neurons
-cat("BANC dataset:\n")
-pc1_meta1 <- meta1 %>%
-  filter(grepl("^pC1|^P1", cell_type, ignore.case = TRUE))
-cat("  Found", nrow(pc1_meta1), "pC1 neurons\n")
-
-sens_meta1 <- meta1 %>%
-  filter(
-    grepl("sensory",super_class),
-    grepl("^ORN|^THRN|^HRN|^TRN", cell_type) |
-    grepl("gustatory", cell_function, ignore.case = TRUE)
-  ) %>%
-  distinct(cell_type, .keep_all = TRUE)
-cat("  Found", nrow(sens_meta1), "sensory cell types (ORN/TRN/HRN/gustatory)\n\n")
-
-# Dataset 2 (maleCNS): Find pC1 neurons and sensory neurons
-cat("maleCNS dataset:\n")
-pc1_meta2 <- meta2 %>%
-  filter(grepl("^pC1|^P1", cell_type, ignore.case = TRUE))
-cat("  Found", nrow(pc1_meta2), "pC1/P1 neurons\n")
-
-sens_meta2 <- meta2 %>%
-  filter(
-    grepl("sensory",super_class),
-    grepl("^ORN|^THRN|^HRN|^TRN", cell_type) |
-    grepl("gustatory", cell_function, ignore.case = TRUE)
-  ) %>%
-  distinct(cell_type, .keep_all = TRUE)
-cat("  Found", nrow(sens_meta2), "sensory cell types (ORN/TRN/HRN/gustatory)\n\n")
-
-# Get pC1 neuron IDs for filtering
-pc1_ids1 <- pc1_meta1 %>% pull(root_id)
-pc1_ids2 <- pc1_meta2 %>% pull(root_id)
-
-# Calculate influence from each sensory cell type to pC1 neurons
-# Dataset 1 (BANC)
-cat("Calculating influence for BANC (", nrow(sens_meta1), "sensory types → pC1)...\n")
-pc1_influence_list1 <- list()
-
-for (i in seq_len(nrow(sens_meta1))) {
-  sensory_type <- sens_meta1$cell_type[i]
-
-  # Get all neurons of this cell type
-  sensory_ids <- meta1 %>%
-    filter(cell_type == sensory_type) %>%
-    pull(root_id)
-
-  if (length(sensory_ids) == 0) next
-
-  if (i %% 10 == 0 || i == nrow(sens_meta1)) {
-    cat("  Processing", i, "of", nrow(sens_meta1), "\n")
-  }
-
-  # Calculate influence
-  influence_scores <- calculate_influence_py(ic_dataset1, sensory_ids) %>%
-    filter(id %in% pc1_ids1) %>%
-    mutate(
-      source_type = sensory_type,
-      dataset = "BANC"
-    ) %>%
-    left_join(
-      pc1_meta1 %>% select(id = root_id, target_type = cell_type),
-      by = "id"
-    )
-
-  pc1_influence_list1[[sensory_type]] <- influence_scores
-}
-
-pc1_influence1 <- bind_rows(pc1_influence_list1)
-cat("BANC: Calculated", nrow(pc1_influence1), "influence scores\n\n")
-
-# Dataset 2 (maleCNS)
-cat("Calculating influence for maleCNS (", nrow(sens_meta2), "sensory types → pC1/P1)...\n")
-pc1_influence_list2 <- list()
-
-for (i in seq_len(nrow(sens_meta2))) {
-  sensory_type <- sens_meta2$cell_type[i]
-
-  # Get all neurons of this cell type
-  sensory_ids <- meta2 %>%
-    filter(cell_type == sensory_type) %>%
-    pull(root_id)
-
-  if (length(sensory_ids) == 0) next
-
-  if (i %% 10 == 0 || i == nrow(sens_meta2)) {
-    cat("  Processing", i, "of", nrow(sens_meta2), "\n")
-  }
-
-  # Calculate influence
-  influence_scores <- calculate_influence_py(ic_dataset2, sensory_ids) %>%
-    filter(id %in% pc1_ids2) %>%
-    mutate(
-      source_type = sensory_type,
-      dataset = "maleCNS"
-    ) %>%
-    left_join(
-      pc1_meta2 %>% select(id = root_id, target_type = cell_type),
-      by = "id"
-    )
-
-  pc1_influence_list2[[sensory_type]] <- influence_scores
-}
-
-pc1_influence2 <- bind_rows(pc1_influence_list2)
-cat("maleCNS: Calculated", nrow(pc1_influence2), "influence scores\n")
-
-# Combine both datasets
-pc1_influence_all <- bind_rows(pc1_influence1, pc1_influence2)
-
-cat("\nTotal influence scores:", nrow(pc1_influence_all), "\n")
-cat("Unique sensory types in BANC:", length(unique(pc1_influence1$source_type)), "\n")
-cat("Unique sensory types in maleCNS:", length(unique(pc1_influence2$source_type)), "\n")
-```
-
-We can now visualise two heatmaps, one for BANC and one for maleCNS, of chemosensory influence onto pC1 neurons by cell type, and identify the sensory channels that matter most to them.
-
-```{r pc1_heatmaps, fig.width=14, fig.height=10}
-# Aggregate influence by source and target cell type
-pc1_influence_ct <- pc1_influence_all %>%
-  group_by(dataset, source_type, target_type) %>%
-  summarise(
-    influence = sum(`Influence_score_(unsigned)`, na.rm = TRUE),
-    adjusted_influence = log(sum(influence, na.rm = TRUE)) + 24,
-    n_connections = n(),
-    .groups = "drop"
-  ) %>%
-  filter(!is.na(source_type), !is.na(target_type))
-
-cat("Aggregated to", nrow(pc1_influence_ct), "source-target type pairs\n\n")
-
-# Create separate matrices for each dataset
-create_pc1_matrix <- function(data, dataset_name) {
-  matrix_data <- data %>%
-    filter(dataset == dataset_name) %>%
-    select(source_type, target_type, adjusted_influence) %>%
-    pivot_wider(
-      names_from = target_type,
-      values_from = adjusted_influence,
-      values_fill = 0
-    ) %>%
-    column_to_rownames("source_type") %>%
-    as.matrix()
-
-  # Clean matrix
-  matrix_data[is.na(matrix_data)] <- 0
-  matrix_data[is.infinite(matrix_data)] <- 0
-
-  # Filter rows with minimal influence
-  if (nrow(matrix_data) > 0) {
-    matrix_data <- matrix_data[rowSums(matrix_data) > 10, , drop = FALSE]
-  }
-
-  return(matrix_data)
-}
-
-# Create matrices
-pc1_matrix1 <- create_pc1_matrix(pc1_influence_ct, "BANC")
-pc1_matrix2 <- create_pc1_matrix(pc1_influence_ct, "maleCNS")
-
-cat("BANC matrix:", nrow(pc1_matrix1), "×", ncol(pc1_matrix1), "\n")
-cat("maleCNS matrix:", nrow(pc1_matrix2), "×", ncol(pc1_matrix2), "\n\n")
-
-# Min-max normalize by column (per pC1 target type)
-normalize_matrix <- function(mat) {
-  if (nrow(mat) == 0 || ncol(mat) == 0) return(mat)
-
-  mat_norm <- apply(mat, MARGIN = 2,
-                   FUN = function(x) {
-                     if (max(x, na.rm = TRUE) == min(x, na.rm = TRUE)) {
-                       return(rep(0, length(x)))
-                     }
-                     (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
-                   })
-  mat_norm[is.infinite(mat_norm)] <- 0
-  mat_norm[is.na(mat_norm)] <- 0
-  return(mat_norm)
-}
-
-pc1_matrix1_norm <- normalize_matrix(pc1_matrix1)
-pc1_matrix2_norm <- normalize_matrix(pc1_matrix2)
-
-# Create static heatmap for BANC
-if (nrow(pc1_matrix1_norm) > 0 && ncol(pc1_matrix1_norm) > 0) {
-  pheatmap(
-    pc1_matrix1_norm,
-    clustering_method = "ward.D2",
-    color = colorRampPalette(c("white", "yellow", "orange", "red", "darkred"))(256),
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    main = "BANC (Female): Chemosensory Influence on pC1 Neurons",
-    filename = file.path(img_dir, "banc_pc1_chemosensory_influence.png"),
-    width = 10,
-    height = 8,
-    fontsize = 8,
-    fontsize_row = 7,
-    fontsize_col = 9
-  )
-  cat("✓ Saved BANC heatmap\n")
-} else {
-  cat("⚠ BANC matrix is empty, skipping heatmap\n")
-}
-
-# Create static heatmap for maleCNS
-if (nrow(pc1_matrix2_norm) > 0 && ncol(pc1_matrix2_norm) > 0) {
-  pheatmap(
-    pc1_matrix2_norm,
-    clustering_method = "ward.D2",
-    color = colorRampPalette(c("white", "yellow", "orange", "red", "darkred"))(256),
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    main = "maleCNS (Male): Chemosensory Influence on pC1/P1 Neurons",
-    filename = file.path(img_dir, "malecns_pc1_chemosensory_influence.png"),
-    width = 10,
-    height = 8,
-    fontsize = 8,
-    fontsize_row = 7,
-    fontsize_col = 9
-  )
-  cat("✓ Saved maleCNS heatmap\n")
-} else {
-  cat("⚠ maleCNS matrix is empty, skipping heatmap\n")
-}
-
-# Create interactive side-by-side heatmaps using heatmaply
-# For BANC
-if (nrow(pc1_matrix1_norm) > 0 && ncol(pc1_matrix1_norm) > 0) {
-  p_pc1_banc <- heatmaply(
-    pc1_matrix1_norm,
-    dendrogram = "row",
-    hclust_method = "ward.D2",
-    colors = colorRampPalette(c("white", "yellow", "orange", "red", "darkred"))(256),
-    main = "BANC (Female): Chemosensory → pC1",
-    xlab = "Target: pC1 Neuron Type",
-    ylab = "Source: Sensory Type",
-    showticklabels = c(TRUE, TRUE),
-    hide_colorbar = FALSE,
-    fontsize_row = 7,
-    fontsize_col = 9,
-    key.title = "Normalized\nInfluence"
-  )
-  print(p_pc1_banc)
-}
-
-# For maleCNS
-if (nrow(pc1_matrix2_norm) > 0 && ncol(pc1_matrix2_norm) > 0) {
-  p_pc1_malecns <- heatmaply(
-    pc1_matrix2_norm,
-    dendrogram = "row",
-    hclust_method = "ward.D2",
-    colors = colorRampPalette(c("white", "yellow", "orange", "red", "darkred"))(256),
-    main = "maleCNS (Male): Chemosensory → pC1/P1",
-    xlab = "Target: pC1/P1 Neuron Type",
-    ylab = "Source: Sensory Type",
-    showticklabels = c(TRUE, TRUE),
-    hide_colorbar = FALSE,
-    fontsize_row = 7,
-    fontsize_col = 9,
-    key.title = "Normalized\nInfluence"
-  )
-  print(p_pc1_malecns)
-}
-
-# Print summary statistics
-cat("\n=== Summary of pC1 Chemosensory Influence ===\n\n")
-
-if (nrow(pc1_influence1) > 0) {
-  cat("BANC (Female):\n")
-  top_banc <- pc1_influence_ct %>%
-    filter(dataset == "BANC") %>%
-    arrange(desc(adjusted_influence)) %>%
-    head(10)
-  print(top_banc %>% select(source_type, target_type, adjusted_influence, n_connections))
-  cat("\n")
-}
-
-if (nrow(pc1_influence2) > 0) {
-  cat("maleCNS (Male):\n")
-  top_malecns <- pc1_influence_ct %>%
-    filter(dataset == "maleCNS") %>%
-    arrange(desc(adjusted_influence)) %>%
-    head(10)
-  print(top_malecns %>% select(source_type, target_type, adjusted_influence, n_connections))
-}
-```
-
-Now we can see the key chemosensory channels onto these neurons, in both the female and male fly.
-
-## Further Exploration
-
-
-## Summary
+# Summary
 
 In this tutorial, you learned how to:
 
@@ -1257,7 +1145,21 @@ In this tutorial, you learned how to:
 4. ✓ Visualise influence patterns with heatmaps and UMAP
 5. ✓ Interpret biological significance of influence scores
 
-The influence metric provides a powerful way to understand how signals propagate through neural circuits beyond direct synaptic connections.
+### Key Takeaways
+
+- **Indirect connectivity matters**: The influence metric reveals how signals propagate through multi-synaptic pathways, capturing functional relationships that direct connectivity alone misses
+
+- **Random walks capture signal flow**: By simulating random walks through the connectome with biologically-inspired stopping probabilities, influence quantifies the likelihood of signal transmission between neurons
+
+- **Strong connections dominate**: Filtering for strong synaptic connections (e.g., ≥5 synapses) dramatically reduces computational load whilst preserving the most functionally relevant pathways
+
+- **Cell type aggregation reveals patterns**: Summing influence scores by cell type transforms neuron-level complexity into interpretable functional relationships between neural populations
+
+- **Visualisation is essential**: Heatmaps reveal specific source-target relationships, whilst UMAP embeddings expose global patterns and functional groupings in high-dimensional influence data
+
+- **Cross-dataset comparisons are powerful**: Analysing influence patterns across datasets (e.g., BANC vs maleCNS) reveals conserved circuit motifs and sex-specific differences in connectivity
+
+- **Biological validation**: Influence patterns align with known biology (e.g., sensory neurons influence dopaminergic learning centres; abdominal neurons influence leg motor control) whilst revealing novel pathways for experimental investigation
 
 ## Session Info
 

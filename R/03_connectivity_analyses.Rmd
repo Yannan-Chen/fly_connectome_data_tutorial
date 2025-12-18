@@ -91,6 +91,8 @@ You can instead choose to work with the full dataset, or a different subset.
 - **Subset:** `r if(is.null(subset_name)) "Full dataset" else subset_name`
 - **Data location:** `r data_path` `r if(use_gcs) "(Google Cloud Storage)" else "(Local)"`
 
+# Core tutorial
+
 ### Visualizing the Suboesophageal Zone Neuropils
 
 The suboesophageal zone contains several distinct neuropils. Let's visualize their 3D structures to understand their spatial organization.
@@ -123,11 +125,9 @@ read_neuropil <- function(search, data_path, dataset_base, ext="neuropils"){
 }
 
 # Read brain mesh (large region)
-cat("Brain:\n")
 brain_mesh <- read_neuropil("brain", data_path, dataset_base, ext = "")
 
 # Read SEZ neuropils (smaller specific regions)
-cat("\nSEZ Neuropils:\n")
 gng_mesh <- read_neuropil("GNG", data_path, dataset_base)
 fla_l_mesh <- read_neuropil("FLA_L", data_path, dataset_base)
 fla_r_mesh <- read_neuropil("FLA_R", data_path, dataset_base)
@@ -154,7 +154,7 @@ plot3d(ammc_r_mesh, col = "lightsalmon", alpha = 0.5, add = TRUE)
 
 ## Load Data
 
-We will choose our dataset and optionally a pre-prepared subset:
+We will choose our dataset and optionally a pre-prepared subset. By defauly, let's look at neurons of the SEZ.
 
 ```{r setup_paths}
 # Extract base dataset name (e.g., "banc" from "banc_746")
@@ -168,18 +168,15 @@ if (!is.null(subset_name)) {
                              paste0(dataset, "_", subset_name, "_simple_edgelist.feather"))
 
   cat("Using subset:", subset_name, "\n")
-  cat("Edgelist path:", edgelist_path, "\n")
 } else {
   # Use full dataset
   edgelist_path <- construct_path(data_path, dataset, "edgelist_simple")
 
   cat("Using full dataset\n")
-  cat("Edgelist path:", edgelist_path, "\n")
 }
 
 # Always need full meta data
 meta_path <- construct_path(data_path, dataset, "meta")
-cat("Meta path:", meta_path, "\n")
 ```
 
 Now read in the chosen edgelist:
@@ -187,9 +184,6 @@ Now read in the chosen edgelist:
 ```{r load_edgelist}
 # Read edgelist
 edgelist <- read_feather_smart(edgelist_path, gcs_filesystem = gcs_fs)
-
-cat("Loaded edgelist with", nrow(edgelist), "connections\n")
-cat("Edgelist columns:", paste(colnames(edgelist), collapse = ", "), "\n")
 
 # Display first few rows
 head(edgelist)
@@ -208,12 +202,101 @@ neuron_ids <- unique(c(edgelist$pre, edgelist$post))
 meta <- meta_full %>%
   filter(!!sym(dataset_id) %in% neuron_ids)
 
+# Display first few rows
+head(meta)
 cat("Meta data for", nrow(meta), "neurons\n")
 cat("Unique pre neurons:", length(unique(edgelist$pre)), "\n")
 cat("Unique post neurons:", length(unique(edgelist$post)), "\n")
+```
 
-# Display first few rows
-head(meta)
+
+## Meta Data Overview
+
+Let's get our bearings and have a look at the meta data for our chosen edgelist.
+
+Let's see what `super_class` and `cell_class` categories we have:
+
+```{r meta_super_class}
+# Count by super_class
+super_class_counts <- meta %>%
+  filter(!is.na(super_class)) %>%
+  count(super_class) %>%
+  arrange(desc(n)) %>%
+  as.data.frame() %>%
+  mutate(super_class=as.character(super_class))
+
+# Reorder for plotting (set factor levels explicitly for ggplotly compatibility)
+super_class_counts$super_class <- factor(
+  super_class_counts$super_class,
+  levels = super_class_counts$super_class[order(super_class_counts$n)]
+)
+
+# Create subtitle for plotly compatibility
+plot_subtitle <- if(!is.null(subset_name)) paste("Subset:", subset_name) else "Full dataset"
+
+# Plot (swap x and y, no coord_flip for ggplotly compatibility)
+p_super <- ggplot(super_class_counts, aes(y = super_class, x = n)) +
+  geom_col(fill = "steelblue", alpha = 0.8) +
+  #geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  labs(
+    title = paste("Neuron Super Classes:", dataset),
+    subtitle = plot_subtitle,
+    y = "Super Class",
+    x = "Number of Neurons"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text = element_text(size = 10)
+  )
+
+save_plot(p_super, paste0(dataset, "_super_class"))
+ggplotly(p_super)
+```
+
+If we have sensory (afferent) or effector (efferent) neurons, let's see what `cell_class` we have for each:
+
+```{r meta_flow_subclass}
+# Count by flow and cell_class
+flow_subclass <- meta %>%
+  filter(flow %in% c("afferent", "efferent"),
+         !is.na(cell_class)) %>%
+  count(flow, cell_class) %>%
+  arrange(flow, desc(n)) %>%
+  group_by(flow) %>%
+  slice_head(n = 15) %>%  # Top 15 per flow
+  ungroup()
+
+if (nrow(flow_subclass) > 0) {
+  # Reorder for plotting within each flow group
+  flow_subclass <- flow_subclass %>%
+    group_by(flow) %>%
+    arrange(n) %>%
+    mutate(cell_class = factor(cell_class, levels = unique(cell_class))) %>%
+    ungroup()
+
+  p_flow <- ggplot(flow_subclass,
+                   aes(y = cell_class, x = n, fill = flow)) +
+    geom_col(alpha = 0.8) +
+    geom_text(aes(label = n), hjust = -0.2, size = 3) +
+    facet_wrap(~flow, scales = "free_y", ncol = 1) +
+    scale_fill_manual(values = c("afferent" = "#E69F00", "efferent" = "#56B4E9")) +
+    labs(
+      title = "Sensory (Afferent) and Effector (Efferent) Neurons",
+      subtitle = "Top 15 cell sub-classes per flow type",
+      x = "Cell Sub-Class",
+      y = "Number of Neurons"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      legend.position = "none",
+      strip.text = element_text(face = "bold", size = 11)
+    )
+
+  save_plot(p_flow, paste0(dataset, "_flow_subclass"), height = 10)
+  ggplotly(p_flow)
+}
 ```
 
 ## Neurotransmitter Prediction and Connectivity Signs
@@ -329,10 +412,6 @@ save_plot(p_signed_dist, paste0(dataset, "_signed_weight_distribution"))
 ggplotly(p_signed_dist)
 
 # Print summary statistics
-cat("\nConnection type statistics:\n")
-cat("Excitatory connections:", sum(edgelist_signed$connection_type == "Excitatory"), "\n")
-cat("Inhibitory connections:", sum(edgelist_signed$connection_type == "Inhibitory"), "\n")
-cat("\nMean absolute weights:\n")
 edgelist_signed %>%
   group_by(connection_type) %>%
   summarise(
@@ -341,100 +420,13 @@ edgelist_signed %>%
     .groups = "drop"
   ) %>%
   print()
+cat("Excitatory connections:", sum(edgelist_signed$connection_type == "Excitatory"), "\n")
+cat("Inhibitory connections:", sum(edgelist_signed$connection_type == "Inhibitory"), "\n")
 ```
 
 However, it is very important not to overplay this idea of being able to assign signs to connections. In the fly, glutamate can be excitatory or inhibitory. In addition, inhibition doesn't only quell activity, it can cause it, e.g. through disinhibition in networks. Consider the visual system, all inputting sensory neurons, the photoreceptor neurons, are histaminergic and inhibit their targets.
 
 It is generally better to work with unsigned edgelists and methods. The exception is when examining direct connectivity, or building concise circuit diagrams.
-
-## Meta Data Overview
-
-Let's get our bearings and have a look at the meta data for our chosen edgelist.
-
-Let's see what `super_class` and `cell_class` categories we have:
-
-```{r meta_super_class}
-# Count by super_class
-super_class_counts <- meta %>%
-  filter(!is.na(super_class)) %>%
-  count(super_class) %>%
-  arrange(desc(n)) %>%
-  as.data.frame() %>%
-  mutate(super_class=as.character(super_class))
-
-# Reorder for plotting (set factor levels explicitly for ggplotly compatibility)
-super_class_counts$super_class <- factor(
-  super_class_counts$super_class,
-  levels = super_class_counts$super_class[order(super_class_counts$n)]
-)
-
-# Create subtitle for plotly compatibility
-plot_subtitle <- if(!is.null(subset_name)) paste("Subset:", subset_name) else "Full dataset"
-
-# Plot (swap x and y, no coord_flip for ggplotly compatibility)
-p_super <- ggplot(super_class_counts, aes(y = super_class, x = n)) +
-  geom_col(fill = "steelblue", alpha = 0.8) +
-  #geom_text(aes(label = n), hjust = -0.2, size = 3) +
-  labs(
-    title = paste("Neuron Super Classes:", dataset),
-    subtitle = plot_subtitle,
-    y = "Super Class",
-    x = "Number of Neurons"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", size = 14),
-    axis.text = element_text(size = 10)
-  )
-
-save_plot(p_super, paste0(dataset, "_super_class"))
-ggplotly(p_super)
-```
-
-If we have sensory (afferent) or effector (efferent) neurons, let's see what `cell_class` we have for each:
-
-```{r meta_flow_subclass}
-# Count by flow and cell_class
-flow_subclass <- meta %>%
-  filter(flow %in% c("afferent", "efferent"),
-         !is.na(cell_class)) %>%
-  count(flow, cell_class) %>%
-  arrange(flow, desc(n)) %>%
-  group_by(flow) %>%
-  slice_head(n = 15) %>%  # Top 15 per flow
-  ungroup()
-
-if (nrow(flow_subclass) > 0) {
-  # Reorder for plotting within each flow group
-  flow_subclass <- flow_subclass %>%
-    group_by(flow) %>%
-    arrange(n) %>%
-    mutate(cell_class = factor(cell_class, levels = unique(cell_class))) %>%
-    ungroup()
-
-  p_flow <- ggplot(flow_subclass,
-                   aes(y = cell_class, x = n, fill = flow)) +
-    geom_col(alpha = 0.8) +
-    geom_text(aes(label = n), hjust = -0.2, size = 3) +
-    facet_wrap(~flow, scales = "free_y", ncol = 1) +
-    scale_fill_manual(values = c("afferent" = "#E69F00", "efferent" = "#56B4E9")) +
-    labs(
-      title = "Sensory (Afferent) and Effector (Efferent) Neurons",
-      subtitle = "Top 15 cell sub-classes per flow type",
-      x = "Cell Sub-Class",
-      y = "Number of Neurons"
-    ) +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(face = "bold", size = 14),
-      legend.position = "none",
-      strip.text = element_text(face = "bold", size = 11)
-    )
-
-  save_plot(p_flow, paste0(dataset, "_flow_subclass"), height = 10)
-  ggplotly(p_flow)
-}
-```
 
 ## Basic Network Statistics
 
@@ -446,7 +438,6 @@ We can see a scatter plot of both `count` and `norm`, and observe their correlat
 # Sample if too many points
 if (nrow(edgelist) > 50000) {
   edgelist_sample <- edgelist %>% sample_n(50000)
-  cat("Sampling 50,000 connections for visualization\n")
 } else {
   edgelist_sample <- edgelist
 }
@@ -520,66 +511,8 @@ p_degree <- ggplot(degree_data, aes(x = degree, color = type, linetype = thresho
     plot.title = element_text(face = "bold"),
     legend.position = "right"
   )
-
 save_plot(p_degree, paste0(dataset, "_degree_distribution"))
 ggplotly(p_degree)
-
-# Print summary statistics
-cat("\nDegree statistics (count > 1):\n")
-in_deg_1 <- degree_threshold1 %>% filter(type == "In-degree") %>% pull(degree)
-out_deg_1 <- degree_threshold1 %>% filter(type == "Out-degree") %>% pull(degree)
-cat("In-degree: mean =", round(mean(in_deg_1), 2),
-    ", median =", median(in_deg_1), "\n")
-cat("Out-degree: mean =", round(mean(out_deg_1), 2),
-    ", median =", median(out_deg_1), "\n")
-
-cat("\nDegree statistics (count > 10):\n")
-in_deg_10 <- degree_threshold10 %>% filter(type == "In-degree") %>% pull(degree)
-out_deg_10 <- degree_threshold10 %>% filter(type == "Out-degree") %>% pull(degree)
-cat("In-degree: mean =", round(mean(in_deg_10), 2),
-    ", median =", median(in_deg_10), "\n")
-cat("Out-degree: mean =", round(mean(out_deg_10), 2),
-    ", median =", median(out_deg_10), "\n")
-```
-
-And a measure of the [small-worldness](https://en.wikipedia.org/wiki/Small-world_network) of the graph:
-
-```{r small_world}
-# Create igraph object (sample if too large)
-if (nrow(edgelist) > 100000) {
-  cat("Sampling network for small-world calculation (large network)...\n")
-  edgelist_sample <- edgelist %>%
-    filter(norm >= 0.01) %>%  # Keep stronger connections
-    sample_n(min(100000, nrow(.)))
-  g <- graph_from_data_frame(
-    edgelist_sample %>% select(pre, post, weight = norm),
-    directed = TRUE
-  )
-} else {
-  g <- graph_from_data_frame(
-    edgelist %>% select(pre, post, weight = norm),
-    directed = TRUE
-  )
-}
-
-# Calculate clustering coefficient (for largest connected component)
-if (vcount(g) > 0) {
-  # Get largest component
-  components <- components(g, mode = "weak")
-  largest_comp <- which.max(components$csize)
-  g_main <- induced_subgraph(g, which(components$membership == largest_comp))
-
-  # Calculate metrics
-  clustering <- transitivity(g_main, type = "global")
-  avg_path_length <- mean_distance(g_main, directed = TRUE)
-
-  cat("\nSmall-world metrics (largest connected component):\n")
-  cat("Clustering coefficient:", round(clustering, 4), "\n")
-  cat("Average path length:", round(avg_path_length, 2), "\n")
-  cat("Nodes in main component:", vcount(g_main), "/", vcount(g), "\n")
-} else {
-  cat("Graph is empty or too sparse for small-world analysis.\n")
-}
 ```
 
 ## Visualizing Direct Connectivity
@@ -711,9 +644,8 @@ edgelist_celltype <- edgelist_celltype_raw %>%
     # Use modal sign to create signed_norm (preserves magnitude)
     signed_norm = norm * modal_sign
   ) %>%
-  select(-post_total_count, -modal_sign)
-
-cat("Cell type connections:", nrow(edgelist_celltype), "\n")
+  select(-post_total_count, -modal_sign) %>%
+  filter(total_count>=10)
 head(edgelist_celltype)
 ```
 
@@ -731,11 +663,18 @@ cat("Connections above 95th percentile (>", round(threshold_95), "synapses):",
     nrow(edgelist_strong), "\n")
 ```
 
-And then we can plot our connectivity matrix:
+And then we can plot our connectivity matrix. We are looking at very many neurons, so let's also make things interesting by just looking at cell type upstream of the motor neurons that control the probosics. 
 
 ```{r matrix_plot}
+# Propobscis motor cell types
+proboscis_motor_cts <- meta %>%
+  filter(grepl("proboscis",body_part_effector), 
+         !is.na(cell_type)) %>%
+  pull(cell_type)
+
 # Prepare data for heatmap (aggregate first in case of duplicates)
-conn_heatmap_data <- edgelist_strong %>%
+conn_heatmap_data <- edgelist_celltype %>%
+  filter(pre_cell_type %in% proboscis_motor_cts | post_cell_type %in% proboscis_motor_cts) %>%
   group_by(pre_cell_type, post_cell_type) %>%
   summarise(
     signed_norm = mean(signed_norm, na.rm = TRUE),
@@ -755,7 +694,6 @@ conn_matrix[is.na(conn_matrix)] <- 0
 conn_matrix[is.infinite(conn_matrix)] <- 0
 
 # Cap color scale at 25th and 75th percentiles for better visibility
-cat("Matrix dimensions:", nrow(conn_matrix), "x", ncol(conn_matrix), "\n")
 p10 <- quantile(conn_matrix, 0.25, na.rm = TRUE)
 p90 <- quantile(conn_matrix, 0.75, na.rm = TRUE)
 max_abs_val <- max(abs(c(p10, p90)))
@@ -769,8 +707,6 @@ if (max_abs_val == 0 || is.na(max_abs_val)) {
   }
 }
 
-cat("Color scale range: -", max_abs_val, "to +", max_abs_val, "\n")
-
 # Create static heatmap with pheatmap
 pheatmap(
   conn_matrix,
@@ -779,12 +715,12 @@ pheatmap(
   clustering_distance_cols = "euclidean",
   color = colorRampPalette(c("blue", "white", "red"))(256),
   breaks = seq(-max_abs_val, max_abs_val, length.out = 257),
-  show_rownames = FALSE,
-  show_colnames = FALSE,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
   main = "Signed Connectivity Matrix: Strong Connections",
   filename = file.path(img_dir, paste0(dataset, "_conn_matrix_strong.png")),
   width = 10,
-  height = 10
+  height = 16
 )
 
 # Create interactive heatmap with Ward's clustering (no dendrograms shown)
@@ -808,9 +744,7 @@ p_matrix <- heatmaply(
 p_matrix
 ```
 
-What do you make of that?
-
-In general, making something of this can be quite tricky. Perhaps a start, but one thing I find useful is to look at sensory neurons (`flow == "afferent"`) and effector (i.e., motor or endocrine) neurons (`flow == "efferent"`), because they are quite interpretable.
+In general, one thing I find useful is to look at sensory neurons (`flow == "afferent"`) and effector (i.e., motor or endocrine) neurons (`flow == "efferent"`), because they are quite interpretable.
 
 For these neurons, `cell_class` and/or `cell_sub_class` is often the most useful label.
 
@@ -820,7 +754,9 @@ For sensory and motor neurons, this label can tell us about innervation of exter
   <img src="../inst/images/fly_body_parts_1.png" alt="Fly body parts and sensory structures" width="80%">
 </p>
 
+
 As well as internal ones.
+
 
 <p align="center">
   <img src="../inst/images/fly_body_parts_2.png" alt="Fly body parts detailed view" width="80%">
@@ -867,164 +803,74 @@ sensory_outputs <- edgelist_mixed %>%
   ) %>%
   left_join(sensory_post_totals, by = "post_label") %>%
   mutate(norm = total_count / post_total_count) %>%
-  select(-post_total_count) %>%
-  filter(total_count >= 100)
+  select(-post_total_count)
 
-if (nrow(sensory_outputs) > 0) {
-  # Create matrix for heatmap
-  sensory_matrix <- sensory_outputs %>%
-    group_by(pre_label, post_label) %>%
-    summarise(norm = mean(norm, na.rm = TRUE), .groups = "drop") %>%
-    tidyr::pivot_wider(
-      names_from = post_label,
-      values_from = norm,
-      values_fill = 0
-    ) %>%
-    tibble::column_to_rownames("pre_label") %>%
-    as.matrix()
-  sensory_matrix[is.na(sensory_matrix)] <- 0
-  sensory_matrix[is.infinite(sensory_matrix)] <- 0
-
-  cat("Matrix dimensions:", nrow(sensory_matrix), "x", ncol(sensory_matrix), "\n")
-  cat("Sensory neuron types:", length(unique(sensory_outputs$pre_label)), "\n")
-  cat("Target neuron types:", length(unique(sensory_outputs$post_label)), "\n")
-
-  # Create static heatmap with pheatmap
-  pheatmap(
-    sensory_matrix,
-    clustering_method = "ward.D2",
-    color = colorRampPalette(c("white", "grey90", "grey50", "black"))(256),
-    show_rownames = FALSE,
-    show_colnames = FALSE,
-    main = "Sensory Neuron Outputs",
-    filename = file.path(img_dir, paste0(dataset, "_sensory_outputs.png")),
-    width = 10,
-    height = 10
-  )
-
-  # Create interactive heatmap with Ward's clustering (no dendrograms shown)
-  p_sensory <- heatmaply(
-    sensory_matrix,
-    dendrogram = "none",
-    hclust_method = "ward.D2",
-    colors = colorRampPalette(c("navy", "blue", "cyan", "yellow", "orange", "red"))(256),
-    main = "Sensory Neuron Outputs (≥100 synapses)",
-    xlab = "Target Neuron Type",
-    ylab = "Sensory Neuron Type",
-    showticklabels = c(FALSE, FALSE),
-    hide_colorbar = FALSE,
-    fontsize_row = 6,
-    fontsize_col = 6,
-    key.title = "Normalized\nWeight"
-  )
-
-  p_sensory
-} else {
-  cat("No sensory neurons with ≥100 synapses found in this subset.\n")
-}
-```
-
-Now let's take every cell type that inputs an effector neuron by at least 100 synapses, and visualize that:
-
-```{r effector_inputs}
-# Calculate total inputs per post_label for effector inputs
-effector_post_totals <- edgelist_mixed %>%
-  filter(post_flow == "efferent") %>%
-  group_by(post_label) %>%
-  summarise(post_total_count = sum(count, na.rm = TRUE), .groups = "drop")
-
-# Effector inputs (at least 100 synapses)
-effector_inputs <- edgelist_mixed %>%
-  filter(post_flow == "efferent") %>%
+# Create matrix for heatmap
+sensory_matrix <- sensory_outputs %>%
   group_by(pre_label, post_label) %>%
-  summarise(
-    total_count = sum(count, na.rm = TRUE),
-    total_signed_count = sum(count * sign(signed_norm), na.rm = TRUE),
-    .groups = "drop"
+  summarise(norm = mean(norm, na.rm = TRUE), .groups = "drop") %>%
+  tidyr::pivot_wider(
+    names_from = post_label,
+    values_from = norm,
+    values_fill = 0
   ) %>%
-  left_join(effector_post_totals, by = "post_label") %>%
-  mutate(signed_norm = total_signed_count / post_total_count) %>%
-  select(-post_total_count, -total_signed_count) %>%
-  filter(total_count >= 100)
+  tibble::column_to_rownames("pre_label") %>%
+  as.matrix()
+sensory_matrix[is.na(sensory_matrix)] <- 0
+sensory_matrix[is.infinite(sensory_matrix)] <- 0
+sensory_matrix <- sensory_matrix[rowSums(sensory_matrix)>10,]
 
-if (nrow(effector_inputs) > 0) {
-  # Create matrix for heatmap
-  effector_matrix <- effector_inputs %>%
-    group_by(pre_label, post_label) %>%
-    summarise(signed_norm = mean(signed_norm, na.rm = TRUE), .groups = "drop") %>%
-    tidyr::pivot_wider(
-      names_from = post_label,
-      values_from = signed_norm,
-      values_fill = 0
-    ) %>%
-    tibble::column_to_rownames("pre_label") %>%
-    as.matrix()
-  effector_matrix[is.na(effector_matrix)] <- 0
-  effector_matrix[is.infinite(effector_matrix)] <- 0
+# Create static heatmap with pheatmap
+pheatmap(
+  sensory_matrix,
+  clustering_method = "ward.D2",
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  main = "Sensory Neuron Outputs",
+  filename = file.path(img_dir, paste0(dataset, "_sensory_outputs.png")),
+  width = 10,
+  height = 10
+)
 
-  cat("Matrix dimensions:", nrow(effector_matrix), "x", ncol(effector_matrix), "\n")
-  cat("Input neuron types:", length(unique(effector_inputs$pre_label)), "\n")
-  cat("Effector neuron types:", length(unique(effector_inputs$post_label)), "\n")
+# Create interactive heatmap with Ward's clustering (no dendrograms shown)
+p_sensory <- heatmaply(
+  sensory_matrix,
+  dendrogram = "none",
+  hclust_method = "ward.D2",
+  main = "Sensory Neuron Targetting",
+  xlab = "Target Neuron Type",
+  ylab = "Sensory Neuron Type",
+  showticklabels = c(FALSE, TRUE),
+  hide_colorbar = FALSE,
+  fontsize_row = 6,
+  fontsize_col = 6,
+  key.title = "Normalized\nWeight"
+)
 
-  # Cap color scale for better visibility
-  p10_effector <- quantile(effector_matrix, 0.25, na.rm = TRUE)
-  p90_effector <- quantile(effector_matrix, 0.75, na.rm = TRUE)
-  max_abs_val <- max(abs(c(p10_effector, p90_effector)))
-
-  # Ensure max_abs_val is not zero (which would cause non-unique breaks)
-  if (max_abs_val == 0 || is.na(max_abs_val)) {
-    # Fall back to using the actual range of the data
-    max_abs_val <- max(abs(effector_matrix), na.rm = TRUE)
-    if (max_abs_val == 0 || is.na(max_abs_val)) {
-      max_abs_val <- 1  # Default fallback
-    }
-  }
-
-  cat("Color scale range: -", max_abs_val, "to +", max_abs_val, "\n")
-
-  # Create static heatmap with pheatmap (saved to PNG)
-  pheatmap(
-    effector_matrix,
-    clustering_method = "ward.D2",
-    clustering_distance_rows = "euclidean",
-    clustering_distance_cols = "euclidean",
-    color = colorRampPalette(c("blue", "white", "red"))(256),
-    breaks = seq(-max_abs_val, max_abs_val, length.out = 257),
-    show_rownames = FALSE,
-    show_colnames = FALSE,
-    main = "Signed Effector Neuron Inputs (≥100 synapses)",
-    filename = file.path(img_dir, paste0(dataset, "_effector_inputs.png")),
-    width = 10,
-    height = 10
-  )
-
-  # Create interactive heatmap with Ward's clustering (no dendrograms shown)
-  p_effector <- heatmaply(
-    effector_matrix,
-    dendrogram = "none",
-    hclust_method = "ward.D2",
-    dist_method = function(x) dist(abs(x)),  # Use absolute values for distance
-    colors = colorRampPalette(c("blue", "cyan", "white", "yellow", "red"))(256),
-    limits = c(-max_abs_val, max_abs_val),
-    main = "Signed Effector Neuron Inputs (≥100 synapses)",
-    xlab = "Effector Neuron Type",
-    ylab = "Input Neuron Type",
-    showticklabels = c(FALSE, FALSE),  # Hide axis text, show on hover
-    hide_colorbar = FALSE,
-    fontsize_row = 6,
-    fontsize_col = 6,
-    key.title = "Signed\nWeight"
-  )
-
-  p_effector
-} else {
-  cat("No effector neurons with ≥100 input synapses found in this subset.\n")
-}
+p_sensory
 ```
 
-More interpretable!
+Interpretable!
 
 If your sample does not have sensory or effector neurons, can you think of well-characterized cell types it does contain, to help you further subset and think about your data?
+
+# Your Turn: New subset
+
+Now try this analysis yourself with a different dataset!
+
+**Exercise:** Switch the pre-prepared subset to `front_leg`
+
+```{r exercise, eval=FALSE}
+# To work with a different dataset, change the dataset variable at the top:
+# subset_name <- "front_leg"
+# neuropil_pattern <- "T1"
+
+# Then re-run the entire notebook to see how the results differ!
+```
+
+# Extensions
+
+Below are more involved analyses, with longer compute times. Working through these will show you how to cluster neurons by their connection similarity, and investigate the groups. 
 
 ## Connectivity Clusters
 
@@ -1035,7 +881,6 @@ Here, we can take a simple but effective method. First, we will calculate the [c
 ```{r cosine_similarity}
 # Create connectivity matrix (neurons x partners)
 # Combine both pre and post connections for each neuron
-cat("Creating connectivity matrix...\n")
 
 # Get all neurons
 all_neurons <- union(edgelist$pre, edgelist$post)
@@ -1046,9 +891,7 @@ conn_counts <- data.frame(
 ) %>%
   count(id) %>%
   filter(n >= 10)  # At least 10 connections
-
 neurons_to_use <- intersect(all_neurons, conn_counts$id)
-cat("Using", length(neurons_to_use), "neurons with ≥10 connections\n")
 
 # Create sparse matrix for both inputs and outputs
 # Rows = neurons, Cols = all partners (pre or post)
@@ -1072,7 +915,6 @@ conn_data <- bind_rows(
 # Create sparse matrix
 neuron_factor <- factor(conn_data$neuron, levels = neurons_to_use)
 partner_factor <- factor(conn_data$partner_type)
-
 inout_connection_matrix <- sparseMatrix(
   i = as.integer(neuron_factor),
   j = as.integer(partner_factor),
@@ -1080,9 +922,6 @@ inout_connection_matrix <- sparseMatrix(
   dims = c(length(neurons_to_use), nlevels(partner_factor)),
   dimnames = list(neurons_to_use, levels(partner_factor))
 )
-
-cat("Matrix dimensions:", nrow(inout_connection_matrix), "x",
-    ncol(inout_connection_matrix), "\n")
 
 # Remove all-zero rows
 non_zero_rows <- which(rowSums(abs(inout_connection_matrix)) > 0.00001)
@@ -1092,35 +931,14 @@ inout_connection_matrix <- inout_connection_matrix[non_zero_rows, ]
 non_zero_cols <- which(colSums(abs(inout_connection_matrix)) > 0.00001)
 inout_connection_matrix <- inout_connection_matrix[, non_zero_cols]
 
-cat("After removing zeros:", nrow(inout_connection_matrix), "x",
-    ncol(inout_connection_matrix), "\n")
-
 # Calculate sparsity
 sparsity <- sum(inout_connection_matrix == 0) / prod(dim(inout_connection_matrix))
-cat("Matrix sparsity:", round(sparsity * 100, 2), "%\n")
 
 # Calculate cosine similarity
-cat("Calculating cosine similarity...\n")
 sparse_matrix <- as(as.matrix(t(inout_connection_matrix)), "dgCMatrix")
-
-# Custom cosine similarity for sparse matrices
-cosine_similarity_sparse <- function(X) {
-  # X is a sparse matrix (features x samples)
-  # Normalize each column (sample)
-  col_norms <- sqrt(colSums(X^2))
-  col_norms[col_norms == 0] <- 1  # Avoid division by zero
-
-  X_norm <- t(t(X) / col_norms)
-
-  # Compute cosine similarity
-  sim_matrix <- as.matrix(crossprod(X_norm))
-
-  return(sim_matrix)
-}
-
 undirected_cosine_sim_matrix <- cosine_similarity_sparse(sparse_matrix)
 undirected_cosine_sim_matrix[is.infinite(undirected_cosine_sim_matrix)] <- 0
-
+cat("Matrix sparsity:", round(sparsity * 100, 2), "%\n")
 cat("Dimensions:", nrow(undirected_cosine_sim_matrix), "x",
     ncol(undirected_cosine_sim_matrix), "\n")
 ```
@@ -1129,7 +947,6 @@ We can use these similarity scores to build a [UMAP](https://umap-learn.readthed
 
 ```{r umap_connectivity}
 # Represent as UMAP
-cat("Running UMAP...\n")
 set.seed(42)
 
 umap_result <- uwot::umap(
@@ -1182,7 +999,6 @@ Next, we will perform [hierarchical clustering](https://en.wikipedia.org/wiki/Hi
 
 ```{r hierarchical_clustering}
 # Perform hierarchical clustering
-cat("Performing hierarchical clustering...\n")
 dist_matrix <- dist(umap_result, method = "euclidean")
 hc <- hclust(dist_matrix, method = "ward.D2")
 
@@ -1198,10 +1014,7 @@ if (require(dynamicTreeCut, quietly = TRUE)) {
   # Fallback: cut tree at fixed height
   dynamic_clusters <- cutree(hc, k = min(12, ceiling(nrow(umap_df) / 10)))
 }
-
 umap_df$unordered_cluster <- factor(dynamic_clusters)
-
-cat("Found", length(unique(dynamic_clusters)), "clusters\n")
 
 # Calculate centroids of clusters
 centroids <- umap_df %>%
@@ -1212,7 +1025,6 @@ centroids <- umap_df %>%
     size = n()
   )
 
-cat("Cluster sizes:\n")
 print(centroids %>% arrange(desc(size)))
 
 # Calculate pairwise distances between centroids
@@ -1270,6 +1082,7 @@ p_umap_clusters <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = cluster,
 
 save_plot(p_umap_clusters, paste0(dataset, "_umap_clusters"))
 ggplotly(p_umap_clusters, tooltip = "text")
+cat("Found", length(unique(dynamic_clusters)), "clusters\n")
 ```
 
 Let's examine what cell types are in each cluster:
@@ -1290,7 +1103,6 @@ top_types_per_cluster <- cluster_summary %>%
     .groups = "drop"
   )
 
-cat("\nTop cell types per cluster:\n")
 print(top_types_per_cluster)
 
 # Super class composition
@@ -1451,89 +1263,85 @@ edgelist_cluster_network <- edgelist %>%
   ) %>%
   filter(synapse_count >= 100)  # Keep substantial connections
 
-if (nrow(edgelist_cluster_network) > 0) {
-  # Create vertices with node types and cluster info for coloring
-  vertices_cluster <- umap_df_annotated %>%
-    group_by(node_label, node_type, cluster) %>%
-    summarise(size = n(), .groups = "drop") %>%
-    rename(name = node_label) %>%
-    filter(name %in% c(edgelist_cluster_network$pre_node_label,
-                      edgelist_cluster_network$post_node_label)) %>%
-    distinct(name, .keep_all = TRUE)
+# Create vertices with node types and cluster info for coloring
+vertices_cluster <- umap_df_annotated %>%
+  group_by(node_label, node_type, cluster) %>%
+  summarise(size = n(), .groups = "drop") %>%
+  rename(name = node_label) %>%
+  filter(name %in% c(edgelist_cluster_network$pre_node_label,
+                    edgelist_cluster_network$post_node_label)) %>%
+  distinct(name, .keep_all = TRUE)
 
-  # Create graph
-  g_cluster <- graph_from_data_frame(
-    d = edgelist_cluster_network %>% select(pre_node_label, post_node_label,
-                                            weight, synapse_count),
-    vertices = vertices_cluster,
-    directed = TRUE
+# Create graph
+g_cluster <- graph_from_data_frame(
+  d = edgelist_cluster_network %>% select(pre_node_label, post_node_label,
+                                          weight, synapse_count),
+  vertices = vertices_cluster,
+  directed = TRUE
+)
+
+# Convert to tidygraph
+g_cluster_tidy <- as_tbl_graph(g_cluster) %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree(mode = "total"))
+
+# Create layout with increased repulsion (larger area for better spacing)
+layout_cluster <- create_layout(g_cluster_tidy, layout = "fr", niter = 1000,
+                                area = vcount(g_cluster_tidy)^2.5)
+
+# Create node color mapping: use cluster colors for clusters, fixed colors for sensory/effector
+layout_cluster <- layout_cluster %>%
+  mutate(
+    node_color = case_when(
+      node_type == "sensory" ~ "grey60",
+      node_type == "effector" ~ "black",
+      node_type == "cluster" & !is.na(cluster) ~ cluster_colors[as.character(cluster)],
+      TRUE ~ "steelblue"
+    )
   )
 
-  # Convert to tidygraph
-  g_cluster_tidy <- as_tbl_graph(g_cluster) %>%
-    activate(nodes) %>%
-    mutate(degree = centrality_degree(mode = "total"))
+# Plot
+p_cluster_network <- ggraph(layout_cluster) +
+  geom_edge_arc(
+    aes(width = weight, alpha = weight),
+    arrow = arrow(length = unit(2, 'mm'), type = "closed"),
+    start_cap = circle(4, 'mm'),
+    end_cap = circle(4, 'mm'),
+    strength = 0.3,
+    color = "grey60"
+  ) +
+  geom_node_point(
+    aes(size = size, color = node_color),
+    alpha = 0.8
+  ) +
+  geom_node_text(
+    aes(label = name),
+    repel = TRUE,
+    size = 2.5,
+    fontface = "bold"
+  ) +
+  scale_edge_width(range = c(0.2, 1.5), name = "Synapse\nCount") +
+  scale_edge_alpha(range = c(0.5, 1.0)) +
+  scale_size_continuous(range = c(3, 12), name = "Neuron\nCount") +
+  scale_color_identity() +
+  labs(
+    title = "Cluster Network with Sensory-Effector Nodes",
+    subtitle = "Nodes = connectivity clusters + sensory/effector cell classes"
+  ) +
+  theme_graph() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 14)
+  )
 
-  # Create layout with increased repulsion (larger area for better spacing)
-  layout_cluster <- create_layout(g_cluster_tidy, layout = "fr", niter = 1000,
-                                  area = vcount(g_cluster_tidy)^2.5)
+save_plot(p_cluster_network, paste0(dataset, "_cluster_network"), width = 14, height = 12)
+p_cluster_network
 
-  # Create node color mapping: use cluster colors for clusters, fixed colors for sensory/effector
-  layout_cluster <- layout_cluster %>%
-    mutate(
-      node_color = case_when(
-        node_type == "sensory" ~ "grey60",
-        node_type == "effector" ~ "black",
-        node_type == "cluster" & !is.na(cluster) ~ cluster_colors[as.character(cluster)],
-        TRUE ~ "steelblue"
-      )
-    )
-
-  # Plot
-  p_cluster_network <- ggraph(layout_cluster) +
-    geom_edge_arc(
-      aes(width = weight, alpha = weight),
-      arrow = arrow(length = unit(2, 'mm'), type = "closed"),
-      start_cap = circle(4, 'mm'),
-      end_cap = circle(4, 'mm'),
-      strength = 0.3,
-      color = "grey60"
-    ) +
-    geom_node_point(
-      aes(size = size, color = node_color),
-      alpha = 0.8
-    ) +
-    geom_node_text(
-      aes(label = name),
-      repel = TRUE,
-      size = 2.5,
-      fontface = "bold"
-    ) +
-    scale_edge_width(range = c(0.2, 1.5), name = "Synapse\nCount") +
-    scale_edge_alpha(range = c(0.5, 1.0)) +
-    scale_size_continuous(range = c(3, 12), name = "Neuron\nCount") +
-    scale_color_identity() +
-    labs(
-      title = "Cluster Network with Sensory-Effector Nodes",
-      subtitle = "Nodes = connectivity clusters + sensory/effector cell classes"
-    ) +
-    theme_graph() +
-    theme(
-      legend.position = "right",
-      plot.title = element_text(face = "bold", size = 14)
-    )
-
-  save_plot(p_cluster_network, paste0(dataset, "_cluster_network"), width = 14, height = 12)
-  p_cluster_network
-
-  cat("Network nodes:", vcount(g_cluster), "\n")
-  cat("Network edges:", ecount(g_cluster), "\n")
-  cat("Sensory nodes:", sum(vertices_cluster$node_type == "sensory", na.rm = TRUE), "\n")
-  cat("Effector nodes:", sum(vertices_cluster$node_type == "effector", na.rm = TRUE), "\n")
-  cat("Cluster nodes:", sum(vertices_cluster$node_type == "cluster", na.rm = TRUE), "\n")
-} else {
-  cat("Insufficient connections for cluster network visualization.\n")
-}
+cat("Network nodes:", vcount(g_cluster), "\n")
+cat("Network edges:", ecount(g_cluster), "\n")
+cat("Sensory nodes:", sum(vertices_cluster$node_type == "sensory", na.rm = TRUE), "\n")
+cat("Effector nodes:", sum(vertices_cluster$node_type == "effector", na.rm = TRUE), "\n")
+cat("Cluster nodes:", sum(vertices_cluster$node_type == "cluster", na.rm = TRUE), "\n")
 ```
 
 ## Visualise cluster morphologies
@@ -1554,52 +1362,18 @@ cluster_samples <- umap_df %>%
   slice_sample(n = neurons_per_cluster) %>%
   ungroup()
 
-cat("Sampling", neurons_per_cluster, "neurons per cluster\n")
-cat("Visualizing first", max_clusters_to_viz, "clusters\n")
-cat("Total neurons to visualize:", nrow(cluster_samples), "\n\n")
-
 # Download skeletons
 swc_path <- file.path(data_path, dataset_base, "obj", "skeletons")
-cat("Skeleton path:", swc_path, "\n")
 
 # Create temporary directory for SWC files
 temp_swc_dir <- tempdir()
 
-# Function to download and read SWC file
-read_swc_neuron <- function(neuron_id, swc_path, temp_dir) {
-  tryCatch({
-    # Find SWC file for this neuron
-    swc_pattern <- paste0(neuron_id, ".swc")
-    gsutil_cmd <- paste("gsutil ls", swc_path, "| grep", swc_pattern)
-    swc_file <- system(gsutil_cmd, intern = TRUE, ignore.stderr = TRUE)
-
-    if (length(swc_file) == 0) return(NULL)
-
-    # Download to temp location
-    temp_file <- file.path(temp_dir, basename(swc_file))
-    download_cmd <- paste("gsutil cp", swc_file, temp_file)
-    system(download_cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
-
-    # Read SWC
-    if (file.exists(temp_file)) {
-      neuron <- read.neuron(temp_file)
-      return(neuron)
-    }
-    return(NULL)
-  }, error = function(e) {
-    return(NULL)
-  })
-}
-
 # Read neurons for each cluster
 neurons_by_cluster <- list()
-cat("Reading SWC files...\n")
-
 for (cl in 1:max_clusters_to_viz) {
   cluster_ids <- cluster_samples %>%
     filter(cluster == cl) %>%
     pull(id)
-
   neurons_list <- list()
   for (nid in cluster_ids) {
     neuron <- read_swc_neuron(nid, swc_path, temp_swc_dir)
@@ -1607,14 +1381,10 @@ for (cl in 1:max_clusters_to_viz) {
       neurons_list[[as.character(nid)]] <- neuron
     }
   }
-
   if (length(neurons_list) > 0) {
     neurons_by_cluster[[cl]] <- as.neuronlist(neurons_list)
-    cat("  Cluster", cl, ":", length(neurons_list), "neurons loaded\n")
   }
 }
-
-cat("\nLoaded skeletons for", length(neurons_by_cluster), "clusters\n")
 ```
 
 Now let's visualize each cluster's morphologies:
@@ -1683,21 +1453,7 @@ if (8 %in% names(neurons_by_cluster) && length(neurons_by_cluster[[8]]) > 0) {
 }
 ```
 
-## Your Turn: New subset
-
-Now try this analysis yourself with a different dataset!
-
-**Exercise:** Switch the pre-prepared subset to `front_leg`
-
-```{r exercise, eval=FALSE}
-# To work with a different dataset, change the dataset variable at the top:
-# subset_name <- "front_leg"
-# neuropil_pattern <- "T1"
-
-# Then re-run the entire notebook to see how the results differ!
-```
-
-## Summary
+# Summary
 
 In this tutorial, we covered:
 
@@ -1715,14 +1471,6 @@ In this tutorial, we covered:
 - **UMAP** reveals structure in high-dimensional connectivity data
 - **Sensory and effector neurons** provide interpretable anchors for analysis
 - **Hierarchical clustering** can identify functional groups based on connectivity
-
-### Next Steps
-
-Try exploring different datasets or subsets:
-- Change `dataset` to explore other connectomes (fafb_783, manc_121, etc.)
-- Try different subsets (mushroom_body, central_complex, etc.)
-- Adjust clustering parameters (k, deepSplit) to find different granularities
-- Look for specific neuron types of interest in your clusters
 
 ---
 

@@ -89,6 +89,8 @@ But by default, let us look at the front leg neuropil!
 
 This is available for BANC, maleCNS and MANC.
 
+# Core tutorial
+
 ## Read Meta Data
 
 Let's start by reading the meta data for our chosen subset:
@@ -99,7 +101,6 @@ edgelist <- read_feather_smart(edgelist_path, gcs_filesystem = gcs_fs)
 
 # Get unique neuron IDs from pre and post columns
 subset_ids <- unique(c(edgelist$pre, edgelist$post))
-cat("Found", length(subset_ids), "unique neurons in", subset_name, "edgelist\n")
 
 # Read full meta data using streaming approach
 meta_full <- read_feather_smart(meta_path, gcs_filesystem = gcs_fs)
@@ -114,8 +115,7 @@ meta <- meta_full %>%
 # Rename ID column to 'id' for consistency
 meta <- meta %>%
   rename(id = !!sym(dataset_id))
-
-cat("Loaded", nrow(meta), "neurons in", subset_name, "subset\n")
+cat("Found", length(subset_ids), "unique neurons in", subset_name, "edgelist\n")
 cat("(From", nrow(meta_full), "total proofread neurons)\n")
 head(meta)
 ```
@@ -192,13 +192,11 @@ neurons <- read_neurons_dir(
   gcs_filesystem = gcs_fs
 )
 
-cat("Loaded", length(neurons), "neurons\n")
 
 # For visualization, we'll use the first neuron
 neuron <- neurons[[1]]
 selected_id <- names(neurons)[1]
 
-cat("Visualizing neuron", selected_id, "with", nrow(neuron$d), "points\n")
 summary(neuron)
 ```
 
@@ -232,7 +230,6 @@ You can find its `.obj` file in our prepared data, and visualise it with our neu
 # Construct paths to mesh directories
 # Large anatomical regions (VNC, brain, etc.) are in obj/ directory
 region_path <- file.path(data_path, dataset_base, "obj")
-cat("Large region meshes path:", region_path, "\n")
 region_files <- system(paste("gsutil ls", region_path), intern = TRUE)
 vnc_obj <- region_files[grepl("vnc.*\\.obj$", region_files, ignore.case = TRUE)][1]
 brain_obj <- region_files[grepl("brain.*\\.obj$", region_files, ignore.case = TRUE)][1]
@@ -259,7 +256,6 @@ We can show them over our neurons, with a little transparency.
 ```{r plot_with_neuropil, fig.width=10, fig.height=8}
 # Smaller specific neuropils are in obj/neuropils/ subdirectory
 neuropil_path <- file.path(data_path, dataset_base, "obj", "neuropils")
-cat("Neuropil meshes path:", neuropil_path, "\n")
 
 # List available OBJ files in the bucket
 neuropil_files <- system(paste("gsutil ls", neuropil_path), intern = TRUE)
@@ -280,7 +276,6 @@ nclear3d()
 
 # Plot multiple neurons in different colors
 n_plot <- length(neurons)
-cat("Plotting", n_plot, "DNg12 neurons with neuropil context\n")
 dummy1<-plot3d(vnc_mesh, col = "lightgrey", alpha = 0.1)
 dummy2<-plot3d(leg_mesh, col = "lightblue", alpha = 0.3, add = TRUE)
 plot3d(neurons, col = rainbow(length(neurons)), lwd = 2, soma = 10000)
@@ -343,67 +338,7 @@ dummy3<-plot3d(neurons, col = "navy", lwd = 2, soma = 10000)
 plot3d(neurons_male_banc, col = "red", lwd = 2, soma = 10000)
 ```
 
-However, if you want do do spatial transforms yourself, you will need to use `nat.templatebrains` and its `xform_brain` function. A bit confusingly, we will also need [bancr](https://github.com/flyconnectome/bancr?tab=readme-ov-file) to complete the bridge to BANC space.
-
-For example, let's read the native MANC neurons
-
-```{r xform_manc_to_banc, eval=FALSE, fig.width=10, fig.height=8}
-# Download template brain registrations (only needs to be done once)
-nat.flybrains::download_jefferislab_registrations() # one time only
-nat.jrcbrains::download_saalfeldlab_registrations() # one time only
-nat.jrcbrains::register_saalfeldlab_registrations()
-
-# Switch to MANC dataset
-dataset_manc <- "manc_121"
-dataset_manc_id <- "manc_121_id"
-
-# Read MANC meta data
-meta_manc_path <- construct_path(data_path, dataset_manc, "meta")
-meta_manc_full <- read_feather_smart(meta_manc_path, gcs_filesystem = gcs_fs)
-
-# Filter for DNg12 neurons in MANC
-meta_manc_dng12 <- meta_manc_full %>%
-  filter(grepl("DNg12", cell_type, ignore.case = TRUE))
-cat("Found", nrow(meta_manc_dng12), "DNg12 neurons in MANC\n")
-
-# Construct path to MANC skeletons in native MANC space
-skeletons_manc_path <- construct_path(data_path, dataset_manc, "skeletons",
-                                      space_suffix = paste0(dataset_manc, "_manc_space"))
-
-# Read MANC neurons in native space
-manc_ids <- meta_manc_dng12[[dataset_manc_id]]
-manc_dng12 <- read_neurons_dir(
-  dir_path = skeletons_manc_path,
-  neuron_ids = manc_ids,
-  gcs_filesystem = gcs_fs
-)
-
-# Transform MANC neurons to JRCVNC2018F template brain
-cat("Transforming MANC -> JRCVNC2018F...\n")
-manc_dng12_jrcvnc2018f <- xform_brain(manc_dng12,
-                                      sample = "MANC",
-                                      reference = "JRCVNC2018F")
-
-# Transform from JRCVNC2018F to BANC using bancr
-cat("Transforming JRCVNC2018F -> BANC...\n")
-manc_dng12_banc <- bancr::banc_to_JRC2018F(manc_dng12_jrcvnc2018f,
-                                           region = "vnc",
-                                           method = "tpsreg",
-                                           banc.units = "nm",
-                                           inverse = TRUE)
-
-# Co-plot MANC neurons with BANC neurons from earlier
-nclear3d()
-
-# Plot  DNg12 neurons
-dummy1<-plot3d(vnc_mesh, col = "lightgrey", alpha = 0.1)
-dummy2<-plot3d(brain_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
-dummy3<-plot3d(neurons, col = "navy", lwd = 2, soma = 10000)
-dumm4<-plot3d(neurons_male_banc, col = "red", lwd = 2, soma = 10000)
-dumm4<-plot3d(manc_dng12_banc, col = "green", lwd = 2, soma = 10000)
-```
-
-You can also `xform_brain` any other data with 3D points, e.g. meshes (`mesh3d` objects), and data frames or matrices (with `x`,`y` and `z` columns), e.g. synapse data.
+However, if you want do do spatial transforms yourself, you will need to use `nat.templatebrains` and its `xform_brain` function. See Extenstion 1 in this document for details.
 
 ## NBLAST
 
@@ -427,13 +362,11 @@ meta_ids <- meta %>%
          cell_class == "single_leg_neuromere") %>%
   distinct(cell_type, .keep_all = TRUE) %>% # we should not usually do this, but for speed reasons during the tutorial, just one skeleton per cell type
   pull(id)
-cat("Reading", length(meta_ids), "neurons from skeleton directory...\n")
 neurons <- read_neurons_dir(
   dir_path = skeletons_path,
   neuron_ids = meta_ids,
   gcs_filesystem = gcs_fs
 )
-cat("Loaded", length(neurons), "neurons\n")
 ```
 
 We can now convert them from 1. nm to µm, and 2. to a 'dotprops' vector cloud, and use this to run an [NBLAST](https://natverse.org/nat.nblast/)!
@@ -446,16 +379,12 @@ neurons_um <- neurons / 1000
 # This removes detail but preserves spatial structure
 neurons_dp <- dotprops(neurons_um, resample = 3, k = 3, .parallel = TRUE)
 
-cat("Converted to dotprops representation\n")
 
 # Run NBLAST all-by-all comparison
 # This computes morphological similarity scores
-cat("Running NBLAST (this may take a moment)...\n")
 # Use smat=NULL to use raw dot product scores
 nblast_scores <- nat.nblast::nblast_allbyall(neurons_dp, UseAlpha = TRUE)
 
-cat("NBLAST complete!\n")
-cat("Score matrix dimensions:", dim(nblast_scores), "\n")
 ```
 
 Let's visualise the result as a dendrogram:
@@ -614,9 +543,75 @@ Now try this analysis yourself with a different dataset!
 # Then re-run the entire notebook to see how the results differ!
 ```
 
-## Extension: Axon-Dendrite Splits
+# Extensions
 
-For many of our datasetss (but notably not BANC yet), we have axon-dendrite splits that have been pre-calculated using a graph-theoretic algorithm from [Schneider-Mizell et al. 2016](https://elifesciences.org/articles/12059).
+In the extended code blocks, you can learn how to 1. transform data yourself between template spaces, and 2. visualise data split by axon and dendrite.
+
+## Extension 1:
+
+However, if you want do do spatial transforms yourself, you will need to use `nat.templatebrains` and its `xform_brain` function. A bit confusingly, we will also need [bancr](https://github.com/flyconnectome/bancr?tab=readme-ov-file) to complete the bridge to BANC space.
+
+For example, let's read the native MANC neurons
+
+```{r xform_manc_to_banc, eval=FALSE, fig.width=10, fig.height=8}
+# Download template brain registrations (only needs to be done once)
+nat.flybrains::download_jefferislab_registrations() # one time only
+nat.jrcbrains::download_saalfeldlab_registrations() # one time only
+nat.jrcbrains::register_saalfeldlab_registrations()
+
+# Switch to MANC dataset
+dataset_manc <- "manc_121"
+dataset_manc_id <- "manc_121_id"
+
+# Read MANC meta data
+meta_manc_path <- construct_path(data_path, dataset_manc, "meta")
+meta_manc_full <- read_feather_smart(meta_manc_path, gcs_filesystem = gcs_fs)
+
+# Filter for DNg12 neurons in MANC
+meta_manc_dng12 <- meta_manc_full %>%
+  filter(grepl("DNg12", cell_type, ignore.case = TRUE))
+cat("Found", nrow(meta_manc_dng12), "DNg12 neurons in MANC\n")
+
+# Construct path to MANC skeletons in native MANC space
+skeletons_manc_path <- construct_path(data_path, dataset_manc, "skeletons",
+                                      space_suffix = paste0(dataset_manc, "_manc_space"))
+
+# Read MANC neurons in native space
+manc_ids <- meta_manc_dng12[[dataset_manc_id]]
+manc_dng12 <- read_neurons_dir(
+  dir_path = skeletons_manc_path,
+  neuron_ids = manc_ids,
+  gcs_filesystem = gcs_fs
+)
+
+# Transform MANC neurons to JRCVNC2018F template brain
+manc_dng12_jrcvnc2018f <- xform_brain(manc_dng12,
+                                      sample = "MANC",
+                                      reference = "JRCVNC2018F")
+
+# Transform from JRCVNC2018F to BANC using bancr
+manc_dng12_banc <- bancr::banc_to_JRC2018F(manc_dng12_jrcvnc2018f,
+                                           region = "vnc",
+                                           method = "tpsreg",
+                                           banc.units = "nm",
+                                           inverse = TRUE)
+
+# Co-plot MANC neurons with BANC neurons from earlier
+nclear3d()
+
+# Plot  DNg12 neurons
+dummy1<-plot3d(vnc_mesh, col = "lightgrey", alpha = 0.1)
+dummy2<-plot3d(brain_mesh, col = "lightgrey", alpha = 0.1, add = TRUE)
+dummy3<-plot3d(neurons, col = "navy", lwd = 2, soma = 10000)
+dumm4<-plot3d(neurons_male_banc, col = "red", lwd = 2, soma = 10000)
+dumm4<-plot3d(manc_dng12_banc, col = "green", lwd = 2, soma = 10000)
+```
+
+You can also `xform_brain` any other data with 3D points, e.g. meshes (`mesh3d` objects), and data frames or matrices (with `x`,`y` and `z` columns), e.g. synapse data.
+
+## Extension 2: Axon-Dendrite Splits
+
+For many of our datasets (but notably not BANC yet), we have axon-dendrite splits that have been pre-calculated using a graph-theoretic algorithm from [Schneider-Mizell et al. 2016](https://elifesciences.org/articles/12059).
 
 The method determines axon versus dendrite by "cutting" the neuron at its major information bottleneck based on synapse distributions, observing which half has more inputs versus outputs.
 
@@ -647,30 +642,40 @@ vpn_meta <- meta_fafb %>%
   filter(grepl("V_l2PN", cell_type, ignore.case = TRUE))
 cat("Found", nrow(vpn_meta), "V_l2PN neurons in fafb\n")
 
-# Get neuron IDs (limit to first 3 for visualization)
-vpn_ids <- vpn_meta[[dataset_fafb_id]]
+# Only proceed if neurons are found
+if (nrow(vpn_meta) > 0) {
+  # Get neuron IDs (limit to first 3 for visualization)
+  vpn_ids <- vpn_meta[[dataset_fafb_id]][1:min(3, nrow(vpn_meta))]
 
-# Construct path to fafb skeletons in BANC space
-skeletons_path <- construct_path(data_path, "fafb", "skeletons",
-                                           space_suffix = "fafb_space")
+  # Construct path to fafb skeletons in BANC space (for co-visualization)
+  skeletons_path <- construct_path(data_path, "fafb", "skeletons",
+                                             space_suffix = "banc_space")
 
-# Read fafb neurons 
-vpn_neurons <- read_neurons_dir(
-  dir_path = skeletons_path,
-  neuron_ids = vpn_ids,
-  gcs_filesystem = gcs_fs
-)
+  # Read fafb neurons
+  vpn_neurons <- read_neurons_dir(
+    dir_path = skeletons_path,
+    neuron_ids = vpn_ids,
+    gcs_filesystem = gcs_fs
+  )
 
-# Plot neurons colored by compartment
-nclear3d()
-axon  <- hemibrainr::axonic_cable(vpn_neurons)
-dendrite  <- hemibrainr::dendritic_cable(vpn_neurons)
-linker  <- hemibrainr::primary_dendrite_cable(vpn_neurons)
-neurite  <- hemibrainr::primary_neurite_cable(vpn_neurons)
-p<-plot3d(axon,col="orange")
-p<-plot3d(dendrite,col="cyan")
-p<-plot3d(linker,col="green")
-plot3d(neurite,col="purple",soma=1000)
+  # Only plot if neurons were loaded successfully
+  if (length(vpn_neurons) > 0) {
+    # Plot neurons colored by compartment
+    nclear3d()
+    axon  <- hemibrainr::axonic_cable(vpn_neurons)
+    dendrite  <- hemibrainr::dendritic_cable(vpn_neurons)
+    linker  <- hemibrainr::primary_dendrite_cable(vpn_neurons)
+    neurite  <- hemibrainr::primary_neurite_cable(vpn_neurons)
+
+    if (length(axon) > 0) p<-plot3d(axon,col="orange")
+    if (length(dendrite) > 0) p<-plot3d(dendrite,col="cyan")
+    if (length(linker) > 0) p<-plot3d(linker,col="green")
+    if (length(neurite) > 0) plot3d(neurite,col="purple",soma=1000)
+  } else {
+  }
+} else {
+  cat("⚠ No V_l2PN neurons found in FAFB - skipping compartment visualization\n")
+}
 ```
 
 We can also see the synapses by this split.
@@ -685,14 +690,16 @@ Let's use four colours:
 - **red** = output synapse, axon
 
 ```{r compartment_synapses, eval=TRUE, fig.width=10, fig.height=8}
-# Construct path to maleCNS synapses file
-dataset <- "fafb_783"
-synapses_path <- file.path(data_path, "fafb", "antennal_lobe", paste0(dataset, "_antennal_lobe_synapses.feather"))
+# Only run if vpn_ids exists (from previous section)
+if (exists("vpn_ids") && length(vpn_ids) > 0) {
+  # Construct path to FAFB synapses file
+  dataset <- "fafb_783"
+  synapses_path <- file.path(data_path, "fafb", "antennal_lobe", paste0(dataset, "_antennal_lobe_synapses.feather"))
 
-# Read synapses and filter for DNg12 neurons
-vpn_synapses <- read_feather_smart(synapses_path, gcs_filesystem = gcs_fs) %>%
-  filter(pre %in% vpn_ids | post %in% vpn_ids)
-cat("Found", nrow(vpn_synapses), "synapses for VlPN neurons\n")
+  # Read synapses and filter for V_l2PN neurons
+  vpn_synapses <- read_feather_smart(synapses_path, gcs_filesystem = gcs_fs) %>%
+    filter(pre %in% vpn_ids | post %in% vpn_ids)
+  cat("Found", nrow(vpn_synapses), "synapses for V_l2PN neurons\n")
 
 # Create synapse classification
 # Determine if input (post) or output (pre)
@@ -771,9 +778,13 @@ if (nrow(vpn_synapses_output_axons) > 0) {
 }
 
 # Display the plot
-p
+  p
+} else {
+  cat("⚠ Skipping compartment synapse visualization - no V_l2PN neurons available\n")
+}
 ```
--->
+
+To calculate axon-dendrite splits yourself, explore the split functions in R'd [hemibrainr](https://natverse.org/hemibrainr/reference/flow_centrality.html) and python's [navis](https://github.com/navis-org/navis).
 
 ## Session Information
 

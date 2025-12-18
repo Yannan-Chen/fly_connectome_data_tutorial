@@ -155,6 +155,8 @@ gs://sjcabs_2025_data/hemibrain/
 gs://sjcabs_2025_data/malecns/
 ```
 
+# Core tutorial
+
 ## Reading Connectome Data
 
 ### Understanding the File Formats
@@ -184,33 +186,7 @@ if (use_gcs) {
 # Meta files are Feather, synapse files are Parquet
 meta_path <- construct_path(data_path, dataset, "meta")
 synapse_path <- construct_path(data_path, dataset, "synapses")
-
-cat("Metadata path:", meta_path, "\n")
-cat("Synapse path:", synapse_path, "\n")
-```
-
-### Example: Loading and Filtering Kenyon Cells
-
-Our meta data follows a hierarchical scheme (i.e. `flow`, `super_class`, `cell_class`, `cell_sub_class`, `cell_type`), with additional non-hierarchical labels (e.g. `neurotransmitter_predicted`, `nerve`, `hemilineage`).
-
-<p align="center">
-  <img src="../inst/images/meta_data_hierarchy_2.png" alt="Meta data hierarchy" width="80%">
-</p>
-
-[Kenyon cells](https://en.wikipedia.org/wiki/Kenyon_cell) are the principal neurons of the insect [mushroom body](https://en.wikipedia.org/wiki/Mushroom_bodies), forming parallel pathways for associative memory. They integrate multi-sensory (but mostly olfactory) information and can number in the thousands per fly brain.
-
-Let's load the metadata and filter for Kenyon cells:
-
-```{r lazy_kenyon}
-# Read metadata into memory (using custom read_feather_smart() function)
 meta_full <- read_feather_smart(meta_path, gcs_filesystem = gcs_fs)
-
-# Filter for Kenyon cells
-kenyon_cells <- meta_full %>%
-  filter(str_detect(cell_class, "kenyon_cell"))
-
-cat("Found", nrow(kenyon_cells), "Kenyon cells in", dataset, "\n")
-head(kenyon_cells)
 ```
 
 ### Load Complete Metadata
@@ -221,12 +197,8 @@ For metadata (~10 MB), we can load the entire dataset into memory:
 # Use the metadata we already loaded
 meta <- meta_full
 
-cat("Dataset:", dataset, "\n")
-cat("Total neurons:", nrow(meta), "\n")
-cat("Metadata columns:", ncol(meta), "\n\n")
-
-# Show column names
-cat("Available columns:\n")
+# Show summary and columns
+cat("Dataset:", dataset, "-", nrow(meta), "neurons,", ncol(meta), "columns\n")
 print(colnames(meta))
 ```
 
@@ -248,7 +220,6 @@ Let's get our list of "proofread" identified neurons, as they are what we will w
 proofread_ids <- na.omit(unique(meta_full[[dataset_id]]))
 
 # Show column names
-cat("Number of proofread neurons:\n")
 print(length(proofread_ids))
 ```
 
@@ -274,13 +245,10 @@ class_counts <- meta %>%
   count(cell_class, sort = TRUE) %>%
   filter(!is.na(cell_class))
 
-cat("\nFlow categories:\n")
 print(flow_counts)
 
-cat("\nTop 10 super_classes:\n")
 print(head(super_counts, 10))
 
-cat("\nTop 10 cell_classes:\n")
 print(head(class_counts, 10))
 ```
 
@@ -313,6 +281,29 @@ p_nt <- ggplot(nt_counts, aes(x = neurotransmitter_predicted, y = n, fill = neur
 # Save and display plot
 save_plot(p_nt, "neurotransmitter_distribution")
 ggplotly(p_nt)
+```
+
+### Example: Loading and Filtering Kenyon Cells
+
+Our meta data follows a hierarchical scheme (i.e. `flow`, `super_class`, `cell_class`, `cell_sub_class`, `cell_type`), with additional non-hierarchical labels (e.g. `neurotransmitter_predicted`, `nerve`, `hemilineage`).
+
+<p align="center">
+  <img src="../inst/images/meta_data_hierarchy_2.png" alt="Meta data hierarchy" width="80%">
+</p>
+
+[Kenyon cells](https://en.wikipedia.org/wiki/Kenyon_cell) are the principal neurons of the insect [mushroom body](https://en.wikipedia.org/wiki/Mushroom_bodies), forming parallel pathways for associative memory. They integrate multi-sensory (but mostly olfactory) information and can number in the thousands per fly brain.
+
+Let's load the metadata and filter for Kenyon cells:
+
+```{r lazy_kenyon}
+# Read metadata into memory (using custom read_feather_smart() function)
+meta_full <- read_feather_smart(meta_path, gcs_filesystem = gcs_fs)
+
+# Filter for Kenyon cells
+kenyon_cells <- meta_full %>%
+  filter(str_detect(cell_class, "kenyon_cell"))
+cat("Found", nrow(kenyon_cells), "Kenyon cells in", dataset, "\n")
+head(kenyon_cells)
 ```
 
 ## Working with Synapse Data
@@ -354,8 +345,8 @@ We provide a pre-filtered feather file at: `banc/mushroom_body/banc_746_mushroom
 ```{r mb_synapses}
 # Load pre-filtered mushroom body synapses from feather file
 # This is MUCH faster than querying the full 4-15 GB Parquet file!
-mb_synapses_path <- file.path(data_path, dataset, "mushroom_body", paste0(dataset, "_mushroom_body_synapses.feather"))
-cat("Loading pre-filtered MB synapses from:", mb_synapses_path, "\n")
+dataset_base <- sub("_[0-9]+$", "", dataset)
+mb_synapses_path <- file.path(data_path, dataset_base, "mushroom_body", paste0(dataset, "_mushroom_body_synapses.feather"))
 mb_synapses <- read_feather_smart(mb_synapses_path, gcs_filesystem = gcs_fs)
 
 # Filter for right side and proofread neurons
@@ -494,15 +485,12 @@ p3 <- ggplot(subclass_counts, aes(x = fct_reorder(cell_sub_class, n), y = n, fil
   labs(title = "Cell Sub-Class (Top 15)", x = NULL, y = "Count")
 
 # Save and display plots separately (each plot is independent)
-cat("\n### Non-Kenyon MB Neurons: Super Class\n")
 save_plot(p1, "mb_neurons_super_class")
 ggplotly(p1)
 
-cat("\n### Cell Class (Top 15)\n")
 save_plot(p2, "mb_neurons_cell_class")
 ggplotly(p2)
 
-cat("\n### Cell Sub-Class (Top 15)\n")
 save_plot(p3, "mb_neurons_cell_subclass")
 ggplotly(p3)
 ```
