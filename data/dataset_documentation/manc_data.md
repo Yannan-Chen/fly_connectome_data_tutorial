@@ -1,160 +1,204 @@
+# MANC Dataset Documentation
+
 ## Overview
 
-This location contains data for the Full Adult Fly Brain (manc) project.
+**MANC (Male Adult Nerve Cord)** - First complete ventral nerve cord connectome at synapse resolution.
 
-We are here:
+**Publications:** Takemura et al. (2024) eLife; Marin et al. (2024) eLife; Cheong et al. (2024) eLife | **Version:** v1.2.1
+**Scale:** 23,650 neurons | ~31 million synapses | ~5.3 million connections
+**Location:** `gs://sjcabs_2025_data/manc/`
+
+## File Structure
 
 ```
-sjcabs_data/
-├── manc/          
-│   ├── manc_121_meta.feather     
-│   ├── manc_121_edgelist_simple.feather     
-│   ├── manc_121_edgelist.feather 
-│   ├── manc_121_synapses.feather 
-│   ├── manc_121_skeletons_in_banc_space.zip  
-│   ├── manc_121_skeletons_in_manc_space.zip
-│   ├── abdominal_neuromere/ * data subset for abdominal control circuits
-│   └── front_leg/ * data subset for control of the front leg
-└── ...
+manc/
+├── manc_121_meta.feather                    # 1.4 MB - Neuron metadata
+├── manc_121_simple_edgelist.feather         # 83 MB - Neuron connectivity
+├── manc_121_split_edgelist.feather          # 321 MB - Compartment connectivity
+├── manc_121_synapses.feather                # 3.6 GB - Individual synapses
+├── manc_banc_space_split_swc/               # Skeletons in BANC space (split by compartment)
+├── manc_manc_space_swc/                     # Skeletons in native MANC space
+└── obj/                                     # Mesh objects
 ```
 
-For each dataset, feather file contain:
-- `meta` - Neuron metadata and annotations (in manc, subsetted to only "proofread" neurons)
-- `edgelist_simple` - Neuron-to-neuron connections
-- `edgelist` - Compartment-to-compartment connections  
-- `synapses` - Detailed synapse information (in manc, subsetted to presynaptic links with cleft_score > 50 on proofead neurons)
-- `skeletons` - manc high-resolution skeletons in SWC format
+---
 
-meta - each row is a unique neuron
-========================================================================================
+## File Descriptions
 
-**manc_121_id**   :   the neuron ID for the source (i.e. upstream, presynaptic) neuron. For manc this is a bodyid for version 121 (published version).
+### `manc_121_meta.feather`
 
-**cell_type**     :   the name of the matched neuron from manc (if brain neuron or DN) or MANC (if VNC neuron or AN), hierarchical below cell_sub_class. Exceptions exist where names were further split to define single cell types
+**Content:** Neuron metadata and annotations
+**Dimensions:** 23,650 rows × 15 columns
+**Each row:** One neuron
 
-**side**    :   the side of the CNS; "L" = left, "R" = right
+#### Key Columns
 
-**hemilineage** :   the hemilineage to which the neuron is thought to belong (ito_lee_hemilineage, hartenstein_hemilineage are the same, but represent two different brain naming schemes)
+| Column | Description |
+|--------|-------------|
+| `manc_121_id` | Body ID for neuron in MANC v1.2.1 |
+| `region` | VNC region (e.g., T1, T2, T3, A1-A8 neuromeres) |
+| `side` | Laterality (left, right, midline) |
+| `hemilineage` | Developmental hemilineage |
+| `nerve` | Entry/exit nerve |
+| `flow` | Information flow (intrinsic, afferent, efferent) |
+| `super_class` | Coarse classification |
+| `cell_class` | Intermediate classification |
+| `cell_sub_class` | Fine classification |
+| `cell_type` | Cell type name |
+| `neurotransmitter_predicted` | Predicted transmitter |
+| `cell_function` | Functional category |
+| `cell_function_detailed` | Detailed annotation |
+| `body_part_sensory` | Sensory target |
+| `body_part_effector` | Motor target (leg, wing, etc.) |
 
-**nerve**   :   entry or exit nerve
+**Notes:**
+- Harmonized to BANC schema
+- VNC only (no brain)
+- Focus on descending commands → motor output transformation
 
-**region**  :   region of the CNS; all neurons with arbours in the optic lobe are optic_lobe, all neurons that fully transit the neck connective between the brain and VNC are neck_connective
+---
 
-**flow** : from the perspective of the whole CNS, whether the neuron is afferent, efferent, or intrinsic
+### `manc_121_simple_edgelist.feather`
 
-**super_class** : coarse division, hierarchical below flow
+**Content:** Neuron-to-neuron connectivity
+**Dimensions:** 5,305,354 rows × 5 columns
+**Each row:** One neuron → neuron connection
 
-**cell_class** : hierarchical below super_class
+| Column | Description |
+|--------|-------------|
+| `pre` | Presynaptic neuron body ID |
+| `post` | Postsynaptic neuron body ID |
+| `count` | Number of synapses |
+| `norm` | Normalized weight |
+| `total_input` | Total inputs to target |
 
-**cell_sub_class** : hierarchical below cell_class
+**Notes:**
+- Total synapses: ~31 million
 
-**neurotransmitter_predicted**     :   the most commonly predicted (modal) transmitter, or the most commonly predicted when weighted by pre-synapse confidence score (conf_nt)
+---
 
+### `manc_121_split_edgelist.feather`
 
-synapses - each row is a unique synaptic connection
-========================================================================================
+**Content:** Compartment-to-compartment connectivity
+**Dimensions:** 6,761,806 rows × 14 columns
+**Each row:** One compartment → compartment connection
 
-**pre**     :   the neuron ID for the source (i.e. upstream, presynaptic) neuron. For manc this is a root_id for BANC, root_id for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
+#### Key Columns
 
-**post**    :   the neuron ID for the target (i.e. downstrea, pesynaptic) neuron. For manc this is a root_id for BANC, root_id for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
+| Column | Description |
+|--------|-------------|
+| `pre`, `post` | Neuron IDs |
+| `pre_label`, `post_label` | Compartment labels |
+| `count` | Synapses connecting compartments |
+| `norm` | Normalized by total neuron input |
+| `post_label_count` | Inputs to target compartment |
+| `pre_top_nt`, `post_top_nt` | Predicted transmitters |
+| `pre_top_nt_p`, `post_top_nt_p` | Confidence scores |
+| `connection` | Connection type descriptor |
 
-**x,y,z**   :   the  position of the connection in nanometer space for the given brain. For the franenbrain, with will be MANC or manc depending on the neuron.
+**Notes:**
+- Includes transmitter predictions for both pre and post neurons
+- Compartment labels from flow centrality algorithm
+- Enables polarity analysis (axon → dendrite, etc.)
 
-**prepost** :   whether the link is pre- (0, i.e. output synapse) or post (1, i.e. input) relative to post_id. In the presynapses table, all prepost==0, in the postsynaptic table, all prepost==1.
+---
 
-**syn_top_nt**  :   the Eckstein and Bates et al. 2024 synapse-level neurotransmitter prediction. Only valid for manc.
+### `manc_121_synapses.feather`
 
-**syn_top_nt_p**    :   the confidence score assicated with syn_top_nt. Only valid for manc.
+**Content:** Individual synapse locations and properties
+**Size:** 3.6 GB
+**Each row:** One synaptic connection
 
-**gaba**    :   the Eckstein and Bates et al. 2024 synapse-level neurotransmitter prediction score for gaba. Only valid for manc.
+| Column | Description |
+|--------|-------------|
+| `pre`, `post` | Neuron body IDs |
+| `x`, `y`, `z` | Coordinates in MANC space (nm) |
+| `prepost` | Link type (0=pre, 1=post) |
+| `cleft_scores` | Cleft detectability |
+| `connector_id` | Presynapse identifier |
+| `neuropil` | Neuropil region |
+| `label` | Compartment annotation |
+| `strahler_order` | Branch order |
 
-**glutamate**    :   the Eckstein and Bates et al. 2024 synapse-level neurotransmitter prediction score for glutamate. Only valid for manc.
+**Notes:**
+- Coordinates in native MANC space
+- No synapse-level transmitter predictions (unlike BANC/FAFB)
 
-**acetylcholine**    :   the Eckstein and Bates et al. 2024 synapse-level neurotransmitter prediction score for acetylcholine. Only valid for manc.
+---
 
-**octopamine**    :   the Eckstein and Bates et al. 2024 synapse-level neurotransmitter prediction score for octopamine. Only valid for manc.
+### Skeleton Directories
 
-**serotonin**    :   the Eckstein and Bates et al. 2024 synapse-level neurotransmitter prediction score for serotonin. Only valid for manc.
+| Directory | Space | Description |
+|-----------|-------|-------------|
+| `manc_banc_space_split_swc/` | BANC | MANC neurons in BANC space (split by compartment) |
+| `manc_manc_space_swc/` | MANC | Native MANC space |
 
-**dopamine**    :   the Eckstein and Bates et al. 2024 synapse-level neurotransmitter prediction score for dopamine. Only valid for manc.
+**Format:** One `.swc` file per neuron or compartment
 
-**scores**  :   the  Buhmamnn prediction score for the synapse, unsure of definition. Only valid for manc.
+---
 
-**cleft_scores**    :   a score that indicates how discriminable the synaptic cleft is. More useful than `size` or `scores`.
+## Data Provenance
 
-**size**    :   the number of voxels (?) in the detected synapse.
+- **Source:** MANC neuPrint v1.2.1
+- **Imaging:** Male adult VNC EM dataset
+- **Processing:** Harmonized to BANC schema
+- **Citations:**
+  - Takemura et al. (2024) "A Connectome of the Male Drosophila Ventral Nerve Cord" *eLife*
+  - Marin et al. (2024) "Systematic annotation of a complete adult male Drosophila nerve cord connectome" *eLife*
+  - Cheong et al. (2024) "Transforming descending input into behavior" *eLife*
 
-**id**  :   the index for the Buhmann synapse in the original .sql table.
+---
 
-**connector_id**  :   a unique identifier for the presynapse to which this link is associated.
+## Loading Examples
 
-**status**  :   whether the synaptic link seems good, or whether it is suspicious because it falls outside the neuropil, is on a non-synaptic cable, etc.
+**Python:**
+```python
+import pandas as pd
 
-**strahler_order**  :   the Strahler order of the branch to which this synapse is attached
+meta = pd.read_feather("gs://sjcabs_2025_data/manc/manc_121_meta.feather")
+edgelist = pd.read_feather("gs://sjcabs_2025_data/manc/manc_121_simple_edgelist.feather")
+split_edgelist = pd.read_feather("gs://sjcabs_2025_data/manc/manc_121_split_edgelist.feather")
+synapses = pd.read_feather("gs://sjcabs_2025_data/manc/manc_121_synapses.feather")
+```
 
-**label**   :   the compartment to which this synapse is attached, can be axon, dendrite, primary dendrite, primary neurite, unknown, or soma.
+**R:**
+```r
+library(arrow)
 
-**neuropil** :   the neuropil volume inside of which this synaptic link can be found. If inside multiple volumes, they appear separated by a comma. 
+meta <- read_feather("gs://sjcabs_2025_data/manc/manc_121_meta.feather")
+edgelist <- read_feather("gs://sjcabs_2025_data/manc/manc_121_simple_edgelist.feather")
+split_edgelist <- read_feather("gs://sjcabs_2025_data/manc/manc_121_split_edgelist.feather")
+synapses <- read_feather("gs://sjcabs_2025_data/manc/manc_121_synapses.feather")
+```
 
+---
 
-edgelist_simple - each row is a unique neuron-neuron connection
-========================================================================================
+## Key Features
 
-**pre**     :   the neuron ID for the source (i.e. upstream, presynaptic) neuron. For manc this is a root_id for BANC, root_id for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
+**Focus:** Descending command signals → motor output transformation
 
-**post**    :   the neuron ID for the target (i.e. downstrea, pesynaptic) neuron. For manc this is a root_id for BANC, root_id for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
+**Key Circuits:**
+- Leg motor circuits (walking, grooming)
+- Wing motor circuits (flight)
+- Abdominal circuits (egg-laying, mating)
+- Sensory feedback integration
 
-**count**   :   the number of synaptic links that connect pre to post. For banc a cleft_score threshold of 50 has been applied.
+**Unique Features:**
+- Complete VNC (no brain)
+- Detailed motor neuron annotations
+- Compartment-level connectivity with transmitter predictions
+- Transformation from command to action
 
-**norm**    :   the normalised weight of a connection, this is count/post_count, where post_count are the total number of inputs to the target neuron (post).
+---
 
-**total_input** :   the total number of inputs to the target neuron (post).
+## Cross-Dataset Notes
 
+**MANC vs BANC:**
+- MANC: VNC only (23K neurons)
+- BANC: Brain + VNC (169K neurons, including ~23K VNC neurons)
+- VNC neurons matched between datasets
+- Use BANC-space skeletons for spatial comparisons
 
-edgelist - each row is a unique compartment-compartment connection
-========================================================================================
-***NOTE*** *each 'compartment' on each row is an axon/dendrite/primary neurite/primary dendrite/unknown cable for a neuron*
-
-**pre**     :   the neuron ID for the source (i.e. upstream, presynaptic) neuron. For manc this is a root_id for BANC, root_id for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
-
-**post**    :   the neuron ID for the target (i.e. downstrea, pesynaptic) neuron. For manc this is a root_id for BANC, root_id for FAFB, cell_id for FANC and bodyid for MANC and Hemibrain.
-
-**pre_count**  :   the total number of oututs from the target neuron (post) NOT the source neuron (pre). *I understand this is a little confusing, and will seek to change the column names to use pre/post for synapses and sourcd/target for neurons in the future.*
-
-**post_count** :   the total number of inputs to the target neuron (post).
-
-**pre_label**  :   the compartment of the presynaptic neuron (source), can be axon, dendrite, primary dendrite, primary neurite, unknown, soma.
-
-**post_label**  :   the compartment of the postsynaptic neuron (target), can be axon, dendrite, primary dendrite, primary neurite, unknown, soma.
-
-**pre_label_count**  :   the total number of oututs from the specified target neuron compartment (post+post_label) NOT the specified target neuron compartment (post+post_label). *I understand this is a little confusing, and will seek to change the column names to use pre/post for synapses and sourcd/target for neurons in the future.*
-
-**post_label_count** :   the total number of inputs to the specified target neuron compartment (post+post_label).
-
-**count**   :   the number of synaptic links that connect pre+pre_label to post+post_label. For manc a cleft_score threshold of 50 has been applied.
-
-**norm**    :   the normalised weight of a connection, this is count/post_count NOT post_label_count, where post_count is the total number of inputs to the target neuron (post).
-
-**norm_label**  :   the normalised weight of a connection, this is count/post_label_count NOT post_count, where post_label_count is the number of inputs to the target neuron compartment (post_post_label).
-
-*other coumns with information from 'meta' may exist for convenience, with pre/post appended to the name to idicate labelled compartment*
-
-
-skeletons - each .swc file is a unique neuron, each row in the file is a point in 3D space
-========================================================================================
-
-**PointNo**  :   Point identifier. A positive integer.
-**Label**  :   Type identifier. The basic set of types used in NeuroMorpho.org SWC files is:
--1  - root
- 0  - undefined
- 1  - soma
- 2  - axon
- 3  - dendrite
- 4  - apical dendrite
- 5-6 - custom
- 7 - primary dendrite
- 9 - primary neurite
-**X,Y,Z**  :   3D point in nm in BANC space (as this covers both brain and nerve cord).
-**R**  :   Radius in nanometers (half the cylinder thickness).
-**Parent**  :   Parent point identifier. This defines how points are connected to each other. In a tree, multiple points can have the same ParentID. The first point in the file must have a ParentID equal to -1, which represents the root point. Parent samples must be defined before they are being referred to. By counting how many points refer to the a given parent, the number of its children can be computed.
-
+**Complementary Datasets:**
+- **BANC:** Full CNS context (brain → VNC → behavior)
+- **FAFB:** Brain circuits that send descending commands
