@@ -113,8 +113,9 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 - **[skeletor](https://github.com/navis-org/skeletor)** - Mesh skeletonisation
 - **[fafbseg-py](https://github.com/navis-org/fafbseg-py)** - FlyWire/FAFB-specific tools
 - **[navis-flybrains](https://github.com/navis-org/navis-flybrains)** - Coordinate transforms and template brains
-- **[Influence score calculator](https://zenodo.org/records/17693838)** - Quantify influence between sensory and effector neurons
-
+- **[ConnectomeInfluenceCalculator](https://zenodo.org/records/17693838)** - Quantify influence between sensory and effector neurons
+- **[cocoa](https://github.com/flyconnectome/cocoa)** - Compare inter/intra-dataset connectivity
+  
 <p align="center">
   <img src="inst/images/natverse_promotion.png" alt="natverse - NeuroAnatomy Toolbox for R" width="70%">
 </p>
@@ -126,7 +127,7 @@ Core packages:
 - **[natverse](http://natverse.org/)** - NeuroAnatomy Toolbox ecosystem (works with all datasets)
 - **[neuprintr](https://github.com/natverse/neuprintr)** - neuPrint client for querying connectome databases
 - **[nat.flybrains](https://github.com/natverse/nat.flybrains)** - Coordinate transforms and template brains
-
+  
 Dataset-specific packages:
 - **[bancr](https://github.com/flyconnectome/bancr)** - BANC-specific client
 - **[fafbseg](https://github.com/natverse/fafbseg)** - FlyWire/FAFB-specific tools
@@ -135,6 +136,7 @@ Dataset-specific packages:
 - **[malecns](https://github.com/flyconnectome/malecns)** - Male CNS specific tools
 
 Analysis tools:
+- **[coconatfly](https://natverse.org/coconatfly/)** - Compare inter/intra-dataset connectivity
 - **[influencer](https://github.com/natverse/influencer/)** - Influence score analysis
 
 ---
