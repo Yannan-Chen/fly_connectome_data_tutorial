@@ -265,7 +265,7 @@ This tutorial follows a progressive learning path. It is designed to take about 
 - Load and visualise 3D neuron skeletons
 - Transform coordinates between native dataset spaces and BANC space
 - Visualise synaptic distributions along neurites
-- 
+- Extension: determine axon/dendrite compartments using flow centrality ([navis](https://navis.readthedocs.io/en/latest/source/tutorials/morph_analysis.html) | [natverse](http://natverse.org/nat/reference/flow.centrality.html) implementations)
 
 ### 3. Connectivity Networks
 - Load and query edgelists (connectivity matrices)
@@ -278,11 +278,6 @@ This tutorial follows a progressive learning path. It is designed to take about 
 - Understand multi-hop indirect influences through network paths
 - Compare influence patterns across datasets
 - Relate structural connectivity to functional impact
-
-### Extention 1: Axon-dendrite splits
-- Understand morphological features (dendrites, axons, branch points)
-- Determine axon/dendrite compartments using flow centrality ([navis](https://navis.readthedocs.io/en/latest/source/tutorials/morph_analysis.html) | [natverse](http://natverse.org/nat/reference/flow.centrality.html) implementations)
-
 
 ---
 
