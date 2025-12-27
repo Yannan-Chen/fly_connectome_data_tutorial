@@ -48,7 +48,7 @@ We focus primarily on two FlyWire datasets—**BANC** and **FAFB**—while also 
 
 The first synapse-resolution connectome spanning the both brain and ventral nerve cord. Contains ~114,000 neurons with ~108 million synaptic connections. A female fly. Missing first optic relay, the lamina and retina.
 
-- **Explore:** [Codex](https://codex.flywire.ai/?dataset=banc)
+- **Explore:** [Codex](https://codex.flywire.ai/?dataset=banc) | [Neuroglancer]()
 - **Publication:** [Bates et al. (2025)](https://pubmed.ncbi.nlm.nih.gov/40766407/) bioRxiv
 - **Documentation:** [data/dataset_documentation/banc_data.md](data/dataset_documentation/banc_data.md)
 
@@ -95,6 +95,14 @@ Dense reconstruction of approximately half the central brain (~25,000 neurons). 
 - **Explore:** [neuPrint](https://neuprint.janelia.org/?dataset=hemibrain:v1.2.1) | [Neuroglancer](https://spelunker.cave-explorer.org/#!%7B%22dimensions%22:%7B%22x%22:%5B8e-9%2C%22m%22%5D%2C%22y%22:%5B8e-9%2C%22m%22%5D%2C%22z%22:%5B8e-9%2C%22m%22%5D%7D%2C%22position%22:%5B30005.095703125%2C20073.41015625%2C12157.427734375%5D%2C%22crossSectionScale%22:9.214678755682833%2C%22projectionOrientation%22:%5B-0.03779619187116623%2C0.38050830364227295%2C0.13536255061626434%2C0.9140360355377197%5D%2C%22projectionScale%22:441638.40352250263%2C%22layers%22:%5B%7B%22type%22:%22image%22%2C%22source%22:%22gs://neuroglancer-janelia-flyem-hemibrain/emdata/clahe_yz/jpeg/%7Cneuroglancer-precomputed:%22%2C%22tab%22:%22source%22%2C%22name%22:%22EM%22%7D%2C%7B%22type%22:%22segmentation%22%2C%22source%22:%22gs://neuroglancer-janelia-flyem-hemibrain/v1.2/segmentation/%7Cneuroglancer-precomputed:%22%2C%22tab%22:%22source%22%2C%22segments%22:%5B%5D%2C%22name%22:%22Hemibrain%22%7D%2C%7B%22type%22:%22segmentation%22%2C%22source%22:%22gs://neuroglancer-janelia-flyem-hemibrain/v1.2/rois/%7Cneuroglancer-precomputed:%22%2C%22tab%22:%22segments%22%2C%22selectedAlpha%22:0%2C%22segments%22:%5B%5D%2C%22name%22:%22rois%22%7D%5D%2C%22showAxisLines%22:false%2C%22showDefaultAnnotations%22:false%2C%22showSlices%22:false%2C%22selectedLayer%22:%7B%22visible%22:true%2C%22layer%22:%22Hemibrain%22%7D%2C%22layout%22:%22xy-3d%22%2C%22selection%22:%7B%22layers%22:%7B%22seg%22:%7B%22annotationId%22:%22data-bounds%22%2C%22annotationSource%22:0%2C%22annotationSubsource%22:%22bounds%22%7D%7D%7D%7D)
 - **Publication:** [Scheffer et al. (2020)](https://elifesciences.org/articles/57443) eLife
 - **Documentation:** [data/dataset_documentation/hemibrain_data.md](data/dataset_documentation/hemibrain_data.md)
+
+---
+## Guides
+
+These guides were created by the FlyWire project:
+- [Neuroglancer cheatsheet](https://docs.google.com/document/d/1ZHJIRAiH0QsIjtwIsO8nKjyzT2zXsgdWbV5xwXAUjgc/edit?usp=sharing) (slightly different neuroglancer version)
+- [Fly synapses](https://docs.google.com/document/d/1tNeG-SIOlSAORXn_m8bKdjcIM80ksPAtyOk8u2CXj_4/edit?usp=sharing)
+- [Ultrastructure and morphology](https://docs.google.com/document/d/1Jj9k53hr8CFnh2KmeqjVl3JSpjy2J3LRCmCORnxmnLY/edit?usp=sharing)
 
 ---
 
