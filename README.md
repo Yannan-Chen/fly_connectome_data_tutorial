@@ -1,6 +1,6 @@
 # Fly Connectome Data Tutorial
 
-Tutorial materials for working with Drosophila connectome datasets at the [Winter School on Computational Approaches in Biological Sciences (SJCABS)](https://sjcabs.com/). We will work with all the major, dense connectome datasets of 2025.
+Tutorial materials for working with Drosophila connectome datasets at the [San Juan Winter School on Connectomics and Brain Simulation (SJCABS)](https://sjcabs.com/). We will work with all the major, dense connectome datasets for the fruit fly.
 
 **Instructors:** [Sven Dorkenwald](https://scholar.google.com/citations?user=sGHphbYAAAAJ&hl=en) & [Alexander Bates](https://scholar.google.com/citations?user=BOVTiXIAAAAJ&hl=en)
 
