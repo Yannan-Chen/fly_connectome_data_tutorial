@@ -459,6 +459,57 @@ plt.tight_layout()
 plt.show()
 ```
 
+#### 3D Neuron Visualization (from utils.py)
+
+```python
+import navis
+from utils import plot3d_split, split_neurons_by_compartment
+
+# Read neurons with compartment labels (FAFB, MANC, maleCNS, Hemibrain)
+# Note: BANC neurons don't have compartment labels yet
+neurons = navis.read_swc('path/to/neurons.swc')
+
+# Option 1: Automatic compartment visualization
+# Splits neurons by Label column and colors by compartment
+fig = plot3d_split(
+    neurons,
+    volumes=neuropil_volume,  # Optional neuropil mesh
+    title='Neurons colored by compartment',
+    width=1200,
+    height=800
+)
+fig.show()
+
+# Compartment colors:
+# - Orange: axon
+# - Cyan: dendrite
+# - Green: primary dendrite (linker)
+# - Purple: primary neurite (cell body fiber)
+
+# Option 2: Manual compartment splitting
+# Get separate NeuronLists for each compartment
+compartments = split_neurons_by_compartment(neurons)
+
+axons = compartments['axon']
+dendrites = compartments['dendrite']
+linkers = compartments['linker']
+neurites = compartments['neurite']
+
+# Plot specific compartments
+fig = navis.plot3d(
+    [dendrites, axons],
+    color=['cyan', 'orange'],
+    backend='plotly'
+)
+```
+
+**Dataset compartment label availability:**
+- ✅ FAFB (fafb_783): Has compartment labels
+- ✅ MANC (manc_121): Has compartment labels
+- ✅ maleCNS (malecns_09): Has compartment labels
+- ✅ Hemibrain (hemibrain_121): Has compartment labels
+- ❌ BANC (banc_746): No compartment labels yet
+
 ### Helper Functions
 
 ```python
