@@ -530,6 +530,15 @@ def split_neurons_by_compartment(neurons):
     """
     Split neurons by axon/dendrite compartments using Label column from SWC files.
 
+    This function mimics R's hemibrainr cable extraction functions (axonic_cable,
+    dendritic_cable, primary_dendrite_cable, primary_neurite_cable).
+
+    Label mapping (from SWC standard):
+    - 2 = axon
+    - 3 = dendrite
+    - 4 = primary dendrite (linker)
+    - 7 = primary neurite (cell body fiber)
+
     Parameters
     ----------
     neurons : navis.NeuronList or list of navis.TreeNeuron
@@ -560,22 +569,36 @@ def split_neurons_by_compartment(neurons):
         if 'Label' in neuron.nodes.columns or 'label' in neuron.nodes.columns or 'compartment' in neuron.nodes.columns:
             label_col = 'Label' if 'Label' in neuron.nodes.columns else ('label' if 'label' in neuron.nodes.columns else 'compartment')
 
-            # Split by compartment
-            for compartment in neuron.nodes[label_col].unique():
-                if pd.isna(compartment):
-                    continue
+            # Get unique labels in this neuron
+            unique_labels = neuron.nodes[label_col].unique()
 
-                comp_lower = str(compartment).lower()
-                subset = navis.subset_neuron(neuron, neuron.nodes[neuron.nodes[label_col] == compartment].node_id.values)
+            # Extract axon (Label == 2)
+            if 2 in unique_labels:
+                axon_nodes = neuron.nodes[neuron.nodes[label_col] == 2].node_id.values
+                if len(axon_nodes) > 0:
+                    axon_subset = navis.subset_neuron(neuron, axon_nodes)
+                    axons.append(axon_subset)
 
-                if 'axon' in comp_lower and 'dendrite' not in comp_lower and 'neurite' not in comp_lower:
-                    axons.append(subset)
-                elif 'dendrite' in comp_lower and 'primary' not in comp_lower:
-                    dendrites.append(subset)
-                elif 'primary_dendrite' in comp_lower or 'linker' in comp_lower:
-                    linkers.append(subset)
-                elif 'neurite' in comp_lower or 'tract' in comp_lower:
-                    neurites.append(subset)
+            # Extract dendrite (Label == 3)
+            if 3 in unique_labels:
+                dendrite_nodes = neuron.nodes[neuron.nodes[label_col] == 3].node_id.values
+                if len(dendrite_nodes) > 0:
+                    dendrite_subset = navis.subset_neuron(neuron, dendrite_nodes)
+                    dendrites.append(dendrite_subset)
+
+            # Extract primary dendrite/linker (Label == 4)
+            if 4 in unique_labels:
+                linker_nodes = neuron.nodes[neuron.nodes[label_col] == 4].node_id.values
+                if len(linker_nodes) > 0:
+                    linker_subset = navis.subset_neuron(neuron, linker_nodes)
+                    linkers.append(linker_subset)
+
+            # Extract primary neurite (Label == 7)
+            if 7 in unique_labels:
+                neurite_nodes = neuron.nodes[neuron.nodes[label_col] == 7].node_id.values
+                if len(neurite_nodes) > 0:
+                    neurite_subset = navis.subset_neuron(neuron, neurite_nodes)
+                    neurites.append(neurite_subset)
 
     return {
         'axon': navis.NeuronList(axons) if axons else navis.NeuronList([]),
