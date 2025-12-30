@@ -1,6 +1,5 @@
 #!/bin/bash
-# neuron_morphology_post_startup.sh - SJCABS Tutorial 02: Neuron Morphology
-# Runtime script for Vertex AI Colab - Tutorial 02 Environment Setup
+# Tutorial 02 Runtime Script - Google Colab Compatible
 
 set -e
 
@@ -9,62 +8,74 @@ echo "SJCABS Tutorial 02: Neuron Morphology"
 echo "Installing Python packages..."
 echo "========================================="
 
+# Install system dependencies if in Colab
+if [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null; then
+    echo "Installing system libraries..."
+    apt-get update -qq
+    apt-get install -y -qq libgomp1
+    echo "✓ System libraries installed"
+fi
+
 # Update pip
 python3 -m pip install --quiet --upgrade pip
 
-# CRITICAL: Install protobuf FIRST to prevent AttributeError issues
+# Fix protobuf
 echo "Installing protobuf (compatible version)..."
-python3 -m pip install --quiet --force-reinstall "protobuf>=3.20,<5.0"
+python3 -m pip uninstall -y protobuf 2>/dev/null || true
+python3 -m pip install --no-cache-dir "protobuf>=3.20,<5.0"
 
-# Install core data science packages
-# NumPy must be <2.1 for compatibility with numba (used by navis)
+# Core packages
 python3 -m pip install --quiet --upgrade \
     pandas==2.3.3 \
     "numpy>=2.0,<2.1" \
     pyarrow \
     gcsfs
 
-# Install visualization packages
+# Visualization
 python3 -m pip install --quiet --upgrade \
     plotly==5.24.1 \
     kaleido \
     matplotlib \
     seaborn
 
-# Install navis and neuroscience tools (essential for morphology analysis)
+# Scientific computing
 python3 -m pip install --quiet --upgrade \
-    navis[all]==1.10.0 \
-    flybrains \
+    scipy \
+    scikit-learn
+
+# Neuroscience tools
+python3 -m pip install --quiet --upgrade \
+    navis==1.10.0 \
     trimesh \
     pykdtree \
-    ncollpyde \
-    scipy \
-    scikit-learn \
-    networkx \
-    umap-learn
+    ncollpyde
 
-# Install Jupyter widgets for interactive plots
+# Optional: flybrains for transforms
+python3 -m pip install --quiet --upgrade \
+    navis-flybrains || echo "ℹ flybrains installation optional"
+
+# Optional: CAVE client for mesh downloading (Extension 03)
+python3 -m pip install --quiet --upgrade \
+    caveclient \
+    cloud-volume || echo "ℹ caveclient installation optional"
+
+# Jupyter support
 python3 -m pip install --quiet --upgrade \
     ipywidgets \
     jupyter \
     tqdm
 
-# Install CAVE tools for Extension 03 (optional - for downloading meshes from BANC)
-python3 -m pip install --quiet --upgrade \
-    caveclient \
-    meshparty
-
-# Verify key installations
 echo ""
 echo "Verifying installations..."
-python3 -c "import navis; print(f'✓ navis {navis.__version__}')" || echo "✗ navis failed"
-python3 -c "import flybrains; print('✓ navis-flybrains installed')" || echo "✗ navis-flybrains failed"
-python3 -c "import pandas as pd; print(f'✓ pandas {pd.__version__}')" || echo "✗ pandas failed"
-python3 -c "import gcsfs; print('✓ gcsfs installed')" || echo "✗ gcsfs failed"
-python3 -c "import plotly; print('✓ plotly installed')" || echo "✗ plotly failed"
-python3 -c "import trimesh; print('✓ trimesh installed')" || echo "✗ trimesh failed"
-python3 -c "import caveclient; print('✓ caveclient installed (Extension 03)')" || echo "✗ caveclient failed"
-python3 -c "import meshparty; print('✓ meshparty installed (Extension 03)')" || echo "✗ meshparty failed"
+python3 -c "import navis; print(f'✓ navis {navis.__version__}')"
+python3 -c "import pandas as pd; print(f'✓ pandas {pd.__version__}')"
+python3 -c "import gcsfs; print('✓ gcsfs installed')"
+python3 -c "import plotly; print('✓ plotly installed')"
+python3 -c "import trimesh; print('✓ trimesh installed')"
+
+echo ""
+echo "Optional packages:"
+python3 -c "import caveclient; print(f'✓ caveclient {caveclient.__version__}')" 2>/dev/null || echo "ℹ caveclient not installed (Extension 03 will be skipped)"
 
 echo ""
 echo "========================================="

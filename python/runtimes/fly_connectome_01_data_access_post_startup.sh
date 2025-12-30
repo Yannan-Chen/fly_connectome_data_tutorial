@@ -1,6 +1,5 @@
 #!/bin/bash
-# post_startup.sh - SJCABS Connectomics Tutorial Environment Setup
-# Runtime template script for Vertex AI Colab
+# Tutorial 01 Runtime Script - Google Colab Compatible
 
 set -e
 
@@ -9,52 +8,56 @@ echo "SJCABS Connectomics Tutorial Environment"
 echo "Installing Python packages..."
 echo "========================================="
 
+# Install system dependencies if in Colab (has sudo)
+if [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null; then
+    echo "Installing system libraries..."
+    apt-get update -qq
+    apt-get install -y -qq libgomp1
+    echo "✓ System libraries installed"
+fi
+
 # Update pip
 python3 -m pip install --quiet --upgrade pip
 
-# CRITICAL: Install protobuf FIRST to prevent AttributeError issues
+# CRITICAL: Fix protobuf version
 echo "Installing protobuf (compatible version)..."
-python3 -m pip install --quiet --force-reinstall "protobuf>=3.20,<5.0"
+python3 -m pip uninstall -y protobuf 2>/dev/null || true
+python3 -m pip install --no-cache-dir "protobuf>=3.20,<5.0"
 
-# Install core data science packages
-# NumPy must be <2.1 for compatibility with numba (used by navis)
+# Install core packages
 python3 -m pip install --quiet --upgrade \
     pandas==2.3.3 \
     "numpy>=2.0,<2.1" \
     pyarrow \
     gcsfs
 
-# Install visualization packages
+# Install visualization
 python3 -m pip install --quiet --upgrade \
     plotly==5.24.1 \
     kaleido \
     matplotlib \
     seaborn
 
-# Install navis and neuroscience tools
+# Install neuroscience packages
 python3 -m pip install --quiet --upgrade \
     navis==1.10.0 \
     trimesh \
     pykdtree \
-    ncollpyde \
-    scipy \
-    scikit-learn \
-    networkx \
-    umap-learn
+    ncollpyde
 
-# Install Jupyter widgets for interactive plots
+# Install Jupyter support
 python3 -m pip install --quiet --upgrade \
     ipywidgets \
     jupyter \
     tqdm
 
-# Verify key installations
+# Verify installations
 echo ""
 echo "Verifying installations..."
-python3 -c "import navis; print(f'✓ navis {navis.__version__}')" || echo "✗ navis failed"
-python3 -c "import pandas as pd; print(f'✓ pandas {pd.__version__}')" || echo "✗ pandas failed"
-python3 -c "import gcsfs; print('✓ gcsfs installed')" || echo "✗ gcsfs failed"
-python3 -c "import plotly; print('✓ plotly installed')" || echo "✗ plotly failed"
+python3 -c "import navis; print(f'✓ navis {navis.__version__}')"
+python3 -c "import pandas as pd; print(f'✓ pandas {pd.__version__}')"
+python3 -c "import gcsfs; print('✓ gcsfs installed')"
+python3 -c "import plotly; print('✓ plotly installed')"
 
 echo ""
 echo "========================================="
