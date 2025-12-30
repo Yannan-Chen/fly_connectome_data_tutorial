@@ -22,7 +22,7 @@ echo "✓ protobuf installed"
 echo "Installing core data science packages..."
 python3 -m pip install --quiet \
     pandas==2.3.3 \
-    "numpy>=2.0,<2.1" \
+    "numpy>=2.0,<2.4" \
     pyarrow \
     gcsfs
 
@@ -64,6 +64,10 @@ if command -v conda >/dev/null 2>&1; then
     # Local conda
     echo "  Using conda for PETSc/SLEPc"
     conda install -c conda-forge petsc petsc4py slepc slepc4py -y --quiet
+
+    # Downgrade numpy if needed (numba requires numpy <2.4)
+    echo "  Ensuring numpy compatibility..."
+    python3 -m pip install --quiet "numpy>=2.0,<2.4"
 else
     # Colab
     echo "  Installing system dependencies for Colab..."
