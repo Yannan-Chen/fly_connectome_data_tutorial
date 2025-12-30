@@ -38,9 +38,10 @@ python3 -m pip install --quiet --upgrade \
     matplotlib \
     seaborn
 
-# Network analysis
-python3 -m pip install --quiet --upgrade \
-    networkx \
+# Network analysis (force clean install to avoid partial installations)
+echo "Installing network analysis packages..."
+python3 -m pip install --quiet --no-cache-dir --force-reinstall \
+    networkx==3.2.1 \
     scipy \
     scikit-learn \
     umap-learn
