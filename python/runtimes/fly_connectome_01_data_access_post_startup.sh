@@ -8,7 +8,7 @@ echo "SJCABS Connectomics Tutorial Environment"
 echo "Installing Python packages..."
 echo "========================================="
 
-# Install system dependencies if in Colab (has sudo)
+# Install system dependencies if in Colab
 if [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null; then
     echo "Installing system libraries..."
     apt-get update -qq
@@ -19,7 +19,7 @@ fi
 # Update pip
 python3 -m pip install --quiet --upgrade pip
 
-# CRITICAL: Fix protobuf version
+# Fix protobuf
 echo "Installing protobuf (compatible version)..."
 python3 -m pip uninstall -y protobuf 2>/dev/null || true
 python3 -m pip install --no-cache-dir "protobuf>=3.20,<5.0"
@@ -38,6 +38,12 @@ python3 -m pip install --quiet --upgrade \
     matplotlib \
     seaborn
 
+# Install scientific computing (needed by utils.py)
+python3 -m pip install --quiet --upgrade \
+    scipy \
+    scikit-learn \
+    umap-learn
+
 # Install neuroscience packages
 python3 -m pip install --quiet --upgrade \
     navis==1.10.0 \
@@ -51,13 +57,13 @@ python3 -m pip install --quiet --upgrade \
     jupyter \
     tqdm
 
-# Verify installations
 echo ""
 echo "Verifying installations..."
 python3 -c "import navis; print(f'✓ navis {navis.__version__}')"
 python3 -c "import pandas as pd; print(f'✓ pandas {pd.__version__}')"
 python3 -c "import gcsfs; print('✓ gcsfs installed')"
 python3 -c "import plotly; print('✓ plotly installed')"
+python3 -c "import umap; print('✓ umap installed')"
 
 echo ""
 echo "========================================="
