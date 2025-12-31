@@ -1,0 +1,931 @@
+---
+title: "Tutorial 05: Transcriptomics and Connectomics Integration"
+author: "Alexander Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  cache = FALSE
+)
+
+# Dataset selection - using FAFB for this tutorial
+# Options: "banc_746", "fafb_783", "manc_121", "hemibrain_121", "malecns_09"
+dataset <- "fafb_783"
+dataset_id <- "fafb_783_id"
+
+# Data location - can be GCS bucket or local path
+data_path <- "gs://sjcabs_2025_data"
+
+# Detect if using GCS or local path
+use_gcs <- grepl("^gs://", data_path)
+
+# Setup image output directory
+img_dir <- "images/tutorial_05"
+if (!dir.exists(img_dir)) {
+  dir.create(img_dir, recursive = TRUE)
+}
+
+# Helper function to save plots
+save_plot <- function(plot_obj, name, width = 10, height = 6) {
+  filename <- file.path(img_dir, paste0(name, ".png"))
+  ggsave(filename, plot_obj, width = width, height = height, dpi = 300, bg = "white")
+}
+```
+
+```{r packages, include=FALSE}
+# Load required packages
+source("setup/packages.R")
+source("setup/functions.R")
+
+# Set plotly as default 3D plot engine for nat
+options(nat.plotengine = 'plotly')
+
+# Setup GCS access if needed
+if (use_gcs) {
+  gcs_fs <- setup_gcs_filesystem()
+} else {
+  gcs_fs <- NULL
+}
+```
+
+## Introduction
+
+This tutorial demonstrates how to integrate **transcriptomics data** with **connectomics data** to identify neurons expressing specific genes and analyze their connectivity patterns.
+
+### Scientific Background
+
+Voltage-gated calcium channels (VGCCs) play crucial roles in neuronal signaling. The **Ca-α1T** gene encodes a low-voltage-activated (T-type) calcium channel subunit that is particularly important in visual processing circuits.
+
+**Key biological insights:**
+- Ca-α1T (FlyBase: [FBgn0264386](https://flybase.org/reports/FBgn0264386))
+- T-type calcium channels enable low-threshold spiking and burst firing, inc. calcium spikes in hyperpolarised neurons.
+- [Known](https://pmc.ncbi.nlm.nih.gov/articles/PMC4673464/) to be expressed in the optic lobes, but not in which types originally.
+- See [Ishida et al. (2025)](https://www.biorxiv.org/content/10.1101/2023.11.24.568537v4) for example in central complex
+
+**Tutorial goals:**
+1. Load transcriptomics data from visual system cell types
+2. Identify cell types expressing Ca-α1T
+3. Map those cell types to the FAFB connectome
+4. Analyze their connectivity patterns
+5. Visualise a network of Ca-α1T+ neurons and their strongest synaptic partners
+
+**Currently working with:**
+
+- **Dataset:** `r dataset` (FAFB - Full Adult Fly Brain)
+- **Transcriptomics:** Visual system cell types (96h development)
+- **Data location:** `r data_path` `r if(use_gcs) "(Google Cloud Storage)" else "(Local)"`
+
+---
+
+# Load Transcriptomics Data
+
+## Read Expression Matrix
+
+The expression matrix contains normalized gene expression values for visual system cell types at 96 hours of development.
+
+```{r load_expression}
+# Construct path to transcriptomics data
+expr_matrix_path <- file.path(data_path, "transcriptomics", "visual_system",
+                               "expr_matrix_96h_V1.1.tsv")
+
+# Read expression matrix
+# First column is gene names, remaining columns are cell types
+if (use_gcs) {
+  # Download from GCS
+  temp_file <- tempfile(fileext = ".tsv")
+  system(paste("gsutil cp", expr_matrix_path, temp_file))
+  expr_matrix <- read.delim(temp_file, row.names = 1, check.names = FALSE)
+  unlink(temp_file)
+} else {
+  expr_matrix <- read.delim(expr_matrix_path, row.names = 1, check.names = FALSE)
+}
+
+cat("Expression matrix dimensions:\n")
+cat("  Genes:", nrow(expr_matrix), "\n")
+cat("  Cell types:", ncol(expr_matrix), "\n")
+cat("\nFirst few genes and cell types:\n")
+expr_matrix[1:5, 1:5]
+```
+
+## Read Cell Type Key
+
+The cell type key maps between different naming conventions across datasets:
+- **Nern_type**: maleCNS naming
+- **Matsliah_type** / **Schlegel_type**: FAFB/BANC naming
+
+```{r load_cell_type_key}
+# Construct path to cell type key
+cell_type_key_path <- file.path(data_path, "transcriptomics", "visual_system",
+                                 "cell_types_V1.1a.tsv")
+
+# Read cell type key
+if (use_gcs) {
+  temp_file <- tempfile(fileext = ".tsv")
+  system(paste("gsutil cp", cell_type_key_path, temp_file))
+  cell_type_key <- read.delim(temp_file, stringsAsFactors = FALSE)
+  unlink(temp_file)
+} else {
+  cell_type_key <- read.delim(cell_type_key_path, stringsAsFactors = FALSE)
+}
+
+cat("Cell type key dimensions:", nrow(cell_type_key), "cell types\n")
+cat("\nColumn names:\n")
+print(names(cell_type_key))
+cat("\nFirst few rows:\n")
+head(cell_type_key, 10)
+```
+
+---
+
+# Voltage-Gated Ion Channels Overview
+
+Before focusing on Ca-α1T, let's explore the expression patterns of voltage-gated ion channels (VGICs) across cell types to provide context.
+
+## Identify Voltage-Gated Ion Channel Genes
+
+```{r identify_vgic_genes}
+# Search for voltage-gated ion channel genes
+# Look for genes containing typical VGIC patterns:
+# - Calcium channels: Ca-alpha, Ca-beta, cacophony (cac)
+# - Sodium channels: para, NaCP60E
+# - Potassium channels: Shaker, Shaw, Shab, Shal, eag, erg, elk
+
+vgic_patterns <- c(
+  "^Ca-alpha",  # Calcium channel alpha subunits
+  "^Ca-beta",   # Calcium channel beta subunits
+  "^cac",       # Cacophony (voltage-gated Ca channel)
+  "^para",      # Paralytic (voltage-gated Na channel)
+  "^NaCP",      # Sodium channel proteins
+  "^Sh$",       # Shaker (Kv1 family)
+  "^Shaw",      # Shaw (Kv3 family)
+  "^Shab",      # Shab (Kv2 family)
+  "^Shal",      # Shal (Kv4 family)
+  "^eag$",      # Ether-a-go-go (Kv10 family)
+  "^erg$",      # Erg (Kv11 family)
+  "^elk$"       # Elk (Kv12 family)
+)
+
+# Find matching genes in expression matrix
+vgic_genes <- grep(paste(vgic_patterns, collapse = "|"),
+                   rownames(expr_matrix),
+                   value = TRUE,
+                   ignore.case = FALSE)
+
+cat("Found", length(vgic_genes), "voltage-gated ion channel genes:\n")
+print(vgic_genes)
+```
+
+## Extract VGIC Expression Matrix
+
+```{r extract_vgic_expr}
+# Subset expression matrix to VGIC genes
+vgic_expr <- expr_matrix[vgic_genes, , drop = FALSE]
+
+cat("\nVGIC expression matrix:\n")
+cat("  Genes:", nrow(vgic_expr), "\n")
+cat("  Cell types:", ncol(vgic_expr), "\n")
+cat("  Value range:", min(vgic_expr), "to", max(vgic_expr), "\n")
+
+# Show summary statistics per gene
+vgic_stats <- data.frame(
+  gene = rownames(vgic_expr),
+  mean_expr = rowMeans(vgic_expr),
+  max_expr = apply(vgic_expr, 1, max),
+  cv = apply(vgic_expr, 1, sd) / rowMeans(vgic_expr)  # Coefficient of variation
+) %>%
+  arrange(desc(mean_expr))
+
+cat("\nTop 10 most highly expressed VGICs:\n")
+print(head(vgic_stats, 10))
+```
+
+## Heatmap of VGIC Expression
+
+```{r plot_vgic_heatmap, fig.width=18, fig.height=10}
+# Prepare data for heatmap
+# Log-transform for better visualisation (add pseudocount to avoid log(0))
+vgic_expr_log <- log2(vgic_expr + 1)
+
+# Create heatmap using pheatmap
+library(pheatmap)
+library(viridis)
+
+# Annotate rows by channel type
+gene_annotation <- data.frame(
+  Channel_Type = case_when(
+    grepl("^Ca-", rownames(vgic_expr_log)) ~ "Calcium",
+    grepl("^cac", rownames(vgic_expr_log)) ~ "Calcium",
+    grepl("^para|^NaCP", rownames(vgic_expr_log)) ~ "Sodium",
+    grepl("^Sh|^Shaw|^Shab|^Shal|^eag|^erg|^elk", rownames(vgic_expr_log)) ~ "Potassium",
+    TRUE ~ "Other"
+  ),
+  row.names = rownames(vgic_expr_log)
+)
+
+# Define colors for channel types
+channel_colors <- list(
+  Channel_Type = c("Calcium" = "#E41A1C", "Sodium" = "#377EB8",
+                   "Potassium" = "#4DAF4A", "Other" = "grey70")
+)
+
+# Create heatmap with viridis color scale
+heatmap_plot <- pheatmap(
+  vgic_expr_log,
+  color = viridis(100),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  clustering_distance_rows = "correlation",
+  clustering_distance_cols = "correlation",
+  annotation_row = gene_annotation,
+  annotation_colors = channel_colors,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize_row = 8,
+  fontsize_col = 8,
+  main = "Voltage-Gated Ion Channel Expression Across Visual Cell Types",
+  angle_col = 90,
+  cellwidth = 15,
+  cellheight = 12,
+  border_color = NA
+)
+
+# Save high-resolution version
+png(file.path(img_dir, "vgic_heatmap.png"),
+    width = 18, height = 10, units = "in", res = 300)
+pheatmap(
+  vgic_expr_log,
+  color = viridis(100),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  clustering_distance_rows = "correlation",
+  clustering_distance_cols = "correlation",
+  annotation_row = gene_annotation,
+  annotation_colors = channel_colors,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize_row = 8,
+  fontsize_col = 8,
+  main = "Voltage-Gated Ion Channel Expression Across Visual Cell Types",
+  angle_col = 90,
+  cellwidth = 15,
+  cellheight = 12,
+  border_color = NA
+)
+dev.off()
+
+cat("\nHeatmap saved to:", file.path(img_dir, "vgic_heatmap.png"), "\n")
+```
+
+## Key Observations
+
+The heatmap reveals:
+- **Cell-type specific expression patterns**: Different VGICs show distinct expression profiles
+- **Calcium channel diversity**: Multiple Ca-α subtypes with varying expression
+- **Potassium channel complexity**: Diverse K+ channels enable varied firing properties
+- **Co-expression patterns**: Clustered genes may indicate functional relationships
+
+Now let's focus on **Ca-α1T**, a low-voltage-activated T-type calcium channel particularly important in visual processing.
+
+---
+
+# Identify Ca-α1T Expressing Cell Types
+
+## Extract Ca-α1T Expression
+
+Let's find which cell types express the voltage-gated calcium channel Ca-α1T.
+
+```{r extract_ca_alpha1t}
+# Check if Ca-alpha1T is in the expression matrix
+if (!"Ca-alpha1T" %in% rownames(expr_matrix)) {
+  stop("Ca-alpha1T not found in expression matrix!")
+}
+
+# Extract Ca-alpha1T expression across all cell types
+ca_alpha1t_expr <- expr_matrix["Ca-alpha1T", , drop = FALSE]
+ca_alpha1t_expr <- as.data.frame(t(ca_alpha1t_expr))
+colnames(ca_alpha1t_expr) <- "expression"
+ca_alpha1t_expr$cell_type <- rownames(ca_alpha1t_expr)
+
+# Sort by expression level
+ca_alpha1t_expr <- ca_alpha1t_expr %>%
+  arrange(desc(expression))
+
+cat("Ca-α1T expression statistics:\n")
+cat("  Mean expression:", mean(ca_alpha1t_expr$expression), "\n")
+cat("  Median expression:", median(ca_alpha1t_expr$expression), "\n")
+cat("  Max expression:", max(ca_alpha1t_expr$expression), "\n")
+cat("  90th percentile:", quantile(ca_alpha1t_expr$expression, 0.9), "\n")
+
+# Show top expressors
+cat("\nTop 10 Ca-α1T expressing cell types:\n")
+print(ca_alpha1t_expr[1:10, ])
+```
+
+## Visualise Ca-α1T Expression
+
+```{r plot_ca_alpha1t_expression, fig.width=16, fig.height=8}
+# Define expression threshold (90th percentile)
+expr_threshold <- quantile(ca_alpha1t_expr$expression, 0.9)
+
+# Add category for plotting
+ca_alpha1t_expr <- ca_alpha1t_expr %>%
+  mutate(expressing = expression >= expr_threshold)
+
+# Create bar plot
+p_expr <- ggplot(ca_alpha1t_expr, aes(x = reorder(cell_type, expression),
+                                       y = expression,
+                                       fill = expressing)) +
+  geom_col() +
+  geom_hline(yintercept = expr_threshold, linetype = "dashed", color = "red", size = 0.8) +
+  scale_fill_manual(values = c("FALSE" = "grey70", "TRUE" = "steelblue"),
+                    labels = c("FALSE" = "Below threshold", "TRUE" = "High expression"),
+                    name = "Expression Level") +
+  labs(
+    title = "Ca-α1T Expression Across Visual System Cell Types",
+    subtitle = paste("Threshold at 90th percentile (", round(expr_threshold, 2), ")", sep = ""),
+    x = "Cell Type",
+    y = "Expression Level"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8),
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "top"
+  )
+
+save_plot(p_expr, "ca_alpha1t_expression", width = 16, height = 8)
+ggplotly(p_expr)
+
+# Identify high expressors
+high_expressors <- ca_alpha1t_expr %>%
+  filter(expressing) %>%
+  pull(cell_type)
+
+cat("\nCell types with high Ca-α1T expression (≥90th percentile):\n")
+print(high_expressors)
+```
+
+---
+
+# Map to FAFB Connectome
+
+## Load FAFB Metadata
+
+```{r load_fafb_meta}
+# Construct path to FAFB metadata
+meta_path <- construct_path(data_path, dataset, "meta")
+
+# Read metadata
+meta_full <- read_feather_smart(meta_path, gcs_filesystem = gcs_fs)
+
+cat("FAFB metadata loaded:\n")
+cat("  Total neurons:", nrow(meta_full), "\n")
+cat("  Columns:", ncol(meta_full), "\n")
+
+# Display first few rows
+head(meta_full %>% select(all_of(dataset_id), cell_type, super_class, neurotransmitter_predicted))
+```
+
+## Map Transcriptomic Cell Types to FAFB
+
+The cell type key uses **Matsliah_type** and **Schlegel_type** columns for FAFB/BANC naming.
+
+```{r map_to_fafb}
+# For FAFB, we'll use Schlegel_type (primary) and Matsliah_type (fallback)
+# These map to the cell_type column in FAFB metadata
+
+# Get high expressing cell types from transcriptomics
+high_expr_celltypes_transcr <- high_expressors
+
+# Map to FAFB naming using both Schlegel_type and Matsliah_type
+fafb_cell_types <- cell_type_key %>%
+  filter(subtype2 %in% high_expr_celltypes_transcr) %>%
+  select(Schlegel_type, Matsliah_type) %>%
+  pivot_longer(cols = everything(), values_to = "fafb_name") %>%
+  pull(fafb_name) %>%
+  unique()
+
+cat("Mapped", length(fafb_cell_types), "cell type names to FAFB\n")
+cat("\nFAFB cell type names:\n")
+print(fafb_cell_types)
+
+# Find neurons of these types in FAFB metadata
+ca_alpha1t_neurons <- meta_full %>%
+  filter(cell_type %in% fafb_cell_types)
+
+cat("\nFound", nrow(ca_alpha1t_neurons), "Ca-α1T+ neurons in FAFB\n")
+
+# Show cell type distribution
+if (nrow(ca_alpha1t_neurons) > 0) {
+  cat("\nCell type distribution:\n")
+  print(table(ca_alpha1t_neurons$cell_type))
+
+  # Get neuron IDs for connectivity analysis
+  ca_alpha1t_ids <- ca_alpha1t_neurons[[dataset_id]]
+  cat("\nNumber of Ca-α1T+ neuron IDs:", length(ca_alpha1t_ids), "\n")
+} else {
+  cat("\nWarning: No matching neurons found in FAFB metadata!\n")
+  cat("This may be due to naming differences or sparse annotation.\n")
+  cat("Consider using a broader search or different cell type mappings.\n")
+}
+```
+
+---
+
+# Connectivity Analysis
+
+## Load FAFB Edgelist
+
+```{r load_edgelist}
+# Construct path to FAFB edgelist
+edgelist_path <- construct_path(data_path, dataset, "edgelist_simple")
+
+# Read edgelist (this may take a minute for large datasets)
+cat("Loading FAFB edgelist (this may take 1-2 minutes)...\n")
+edgelist_full <- read_feather_smart(edgelist_path, gcs_filesystem = gcs_fs)
+
+cat("\nEdgelist loaded:\n")
+cat("  Total connections:", nrow(edgelist_full), "\n")
+cat("  Columns:", paste(names(edgelist_full), collapse = ", "), "\n")
+
+# Display structure
+head(edgelist_full)
+```
+
+## Filter for Ca-α1T+ Neurons and Strong Partners
+
+We'll identify the strongest synaptic partners of Ca-α1T+ neurons using two criteria:
+1. **Normalised weight** ≥ 90th percentile (strong relative connectivity)
+2. **Synapse count** > 5 (minimum absolute connectivity)
+
+```{r filter_strong_partners}
+if (length(ca_alpha1t_ids) > 0) {
+  # Filter edgelist for connections involving Ca-α1T+ neurons
+  # Include both pre and post connections
+  edgelist_ca <- edgelist_full %>%
+    filter(pre %in% ca_alpha1t_ids | post %in% ca_alpha1t_ids)
+
+  cat("Connections involving Ca-α1T+ neurons:", nrow(edgelist_ca), "\n")
+
+  # Calculate 90th percentile of normalised weight
+  norm_threshold <- quantile(edgelist_ca$norm, 0.9, na.rm = TRUE)
+  cat("90th percentile of norm:", norm_threshold, "\n")
+
+  # Filter for strong connections (norm ≥ 90th percentile AND count > 5)
+  edgelist_strong <- edgelist_ca %>%
+    filter(norm >= norm_threshold, count > 5)
+
+  cat("\nStrong connections (≥90th percentile norm AND count>5):", nrow(edgelist_strong), "\n")
+
+  # Get all neuron IDs in the strong network (Ca-α1T+ neurons + partners)
+  network_ids <- unique(c(edgelist_strong$pre, edgelist_strong$post))
+  cat("Total neurons in network:", length(network_ids), "\n")
+
+  # Get metadata for network neurons
+  network_meta <- meta_full %>%
+    filter(!!sym(dataset_id) %in% network_ids) %>%
+    mutate(is_ca_alpha1t = !!sym(dataset_id) %in% ca_alpha1t_ids)
+
+  cat("  Ca-α1T+ neurons:", sum(network_meta$is_ca_alpha1t), "\n")
+  cat("  Partner neurons:", sum(!network_meta$is_ca_alpha1t), "\n")
+
+} else {
+  cat("No Ca-α1T+ neurons found - skipping connectivity analysis\n")
+}
+```
+
+## Network Statistics
+
+```{r network_stats}
+if (exists("edgelist_strong") && nrow(edgelist_strong) > 0) {
+  # Compute network statistics
+  cat("\nNetwork Statistics (Neuron-Level):\n")
+  cat("="  , rep("=", 50), "\n", sep = "")
+
+  # Connection counts
+  cat("Total connections:", nrow(edgelist_strong), "\n")
+  cat("Average synapse count:", mean(edgelist_strong$count), "\n")
+  cat("Average normalised weight:", mean(edgelist_strong$norm), "\n")
+
+  # Partner statistics
+  ca_outputs <- edgelist_strong %>%
+    filter(pre %in% ca_alpha1t_ids) %>%
+    count(pre) %>%
+    nrow()
+
+  ca_inputs <- edgelist_strong %>%
+    filter(post %in% ca_alpha1t_ids) %>%
+    count(post) %>%
+    nrow()
+
+  cat("\nCa-α1T+ neurons with outputs:", ca_outputs, "\n")
+  cat("Ca-α1T+ neurons with inputs:", ca_inputs, "\n")
+
+  # Top partners
+  cat("\nTop 10 strongest postsynaptic partners (neuron-level):\n")
+  top_post <- edgelist_strong %>%
+    filter(pre %in% ca_alpha1t_ids) %>%
+    group_by(post) %>%
+    summarise(
+      total_count = sum(count),
+      mean_norm = mean(norm),
+      n_connections = n()
+    ) %>%
+    arrange(desc(mean_norm)) %>%
+    head(10) %>%
+    left_join(network_meta %>% select(!!sym(dataset_id), cell_type, super_class),
+              by = setNames(dataset_id, "post"))
+
+  print(top_post)
+
+  cat("\nTop 10 strongest presynaptic partners (neuron-level):\n")
+  top_pre <- edgelist_strong %>%
+    filter(post %in% ca_alpha1t_ids) %>%
+    group_by(pre) %>%
+    summarise(
+      total_count = sum(count),
+      mean_norm = mean(norm),
+      n_connections = n()
+    ) %>%
+    arrange(desc(mean_norm)) %>%
+    head(10) %>%
+    left_join(network_meta %>% select(!!sym(dataset_id), cell_type, super_class),
+              by = setNames(dataset_id, "pre"))
+
+  print(top_pre)
+
+  # Cell type-level statistics
+  cat("\n\n")
+  cat("\nNetwork Statistics (Cell Type-Level):\n")
+  cat("="  , rep("=", 50), "\n", sep = "")
+
+  # Add cell type metadata to edgelist
+  edgelist_with_types <- edgelist_strong %>%
+    left_join(network_meta %>% select(!!sym(dataset_id), cell_type, is_ca_alpha1t),
+              by = setNames(dataset_id, "pre")) %>%
+    rename(pre_celltype = cell_type, pre_is_ca = is_ca_alpha1t) %>%
+    left_join(network_meta %>% select(!!sym(dataset_id), cell_type, is_ca_alpha1t),
+              by = setNames(dataset_id, "post")) %>%
+    rename(post_celltype = cell_type, post_is_ca = is_ca_alpha1t)
+
+  # Collapse to cell type level
+  celltype_stats <- edgelist_with_types %>%
+    group_by(pre_celltype, post_celltype, pre_is_ca, post_is_ca) %>%
+    summarise(
+      mean_norm = mean(norm, na.rm = TRUE),
+      total_count = sum(count, na.rm = TRUE),
+      n_neuron_connections = n(),
+      .groups = "drop"
+    ) %>%
+    filter(!is.na(mean_norm))
+
+  cat("Total cell type connections:", nrow(celltype_stats), "\n")
+  cat("Average synapse count per cell type pair:", mean(celltype_stats$total_count), "\n")
+  cat("Average normalised weight per cell type pair:", mean(celltype_stats$mean_norm), "\n")
+  cat("Average neuron connections per cell type pair:", mean(celltype_stats$n_neuron_connections), "\n")
+
+  # Cell type partner statistics
+  ca_celltype_outputs <- celltype_stats %>%
+    filter(pre_is_ca) %>%
+    distinct(pre_celltype) %>%
+    nrow()
+
+  ca_celltype_inputs <- celltype_stats %>%
+    filter(post_is_ca) %>%
+    distinct(post_celltype) %>%
+    nrow()
+
+  cat("\nCa-α1T+ cell types with outputs:", ca_celltype_outputs, "\n")
+  cat("Ca-α1T+ cell types with inputs:", ca_celltype_inputs, "\n")
+
+  # Top cell type partners
+  cat("\nTop 10 strongest postsynaptic partner cell types:\n")
+  top_post_celltype <- celltype_stats %>%
+    filter(pre_is_ca) %>%
+    arrange(desc(mean_norm)) %>%
+    head(10) %>%
+    select(post_celltype, mean_norm, total_count, n_neuron_connections)
+
+  print(top_post_celltype)
+
+  cat("\nTop 10 strongest presynaptic partner cell types:\n")
+  top_pre_celltype <- celltype_stats %>%
+    filter(post_is_ca) %>%
+    arrange(desc(mean_norm)) %>%
+    head(10) %>%
+    select(pre_celltype, mean_norm, total_count, n_neuron_connections)
+
+  print(top_pre_celltype)
+}
+```
+
+---
+
+# Network Visualisation
+
+## Create Network Graph
+
+```{r create_network}
+if (exists("edgelist_strong") && nrow(edgelist_strong) > 0) {
+  # Filter for only UPSTREAM connections to Ca-α1T+ neurons
+  # (i.e., post must be Ca-α1T+)
+  edgelist_upstream <- edgelist_strong %>%
+    filter(post %in% ca_alpha1t_ids)
+
+  cat("Filtering for upstream connections to Ca-α1T+ neurons:\n")
+  cat("  Total strong connections:", nrow(edgelist_strong), "\n")
+  cat("  Upstream to Ca-α1T+:", nrow(edgelist_upstream), "\n")
+
+  # Add cell type and neurotransmitter metadata to edgelist
+  edgelist_with_types <- edgelist_upstream %>%
+    left_join(network_meta %>% select(!!sym(dataset_id), cell_type, is_ca_alpha1t, neurotransmitter_predicted),
+              by = setNames(dataset_id, "pre")) %>%
+    rename(pre_celltype = cell_type, pre_is_ca = is_ca_alpha1t, pre_nt = neurotransmitter_predicted) %>%
+    left_join(network_meta %>% select(!!sym(dataset_id), cell_type, is_ca_alpha1t),
+              by = setNames(dataset_id, "post")) %>%
+    rename(post_celltype = cell_type, post_is_ca = is_ca_alpha1t)
+
+  # Filter for only presynaptic neurons with GABA or glutamate
+  edgelist_inhibitory <- edgelist_with_types %>%
+    filter(tolower(pre_nt) %in% c("gaba", "glutamate"))
+
+  cat("  After filtering for GABA/glutamate presynaptic:", nrow(edgelist_inhibitory), "\n")
+
+  # Count neurons per cell type (both pre and post)
+  neurons_per_celltype <- network_meta %>%
+    group_by(cell_type) %>%
+    summarise(n_neurons = n(), .groups = "drop")
+
+  # Replace NA cell types with "unknown"
+  edgelist_inhibitory <- edgelist_inhibitory %>%
+    mutate(
+      pre_celltype = ifelse(is.na(pre_celltype), "unknown", pre_celltype),
+      post_celltype = ifelse(is.na(post_celltype), "unknown", post_celltype),
+      pre_is_ca = ifelse(is.na(pre_is_ca), FALSE, pre_is_ca),
+      post_is_ca = ifelse(is.na(post_is_ca), FALSE, post_is_ca),
+      pre_nt = ifelse(is.na(pre_nt), "unknown", pre_nt)
+    )
+
+  # Collapse to cell type level
+  # Calculate mean norm and total count for each cell type pair
+  celltype_edgelist <- edgelist_inhibitory %>%
+    group_by(pre_celltype, post_celltype, pre_is_ca, post_is_ca) %>%
+    summarise(
+      mean_norm = mean(norm, na.rm = TRUE),
+      total_count = sum(count, na.rm = TRUE),
+      n_neuron_connections = n(),
+      .groups = "drop"
+    ) %>%
+    filter(!is.na(mean_norm))  # Remove any NA weights
+
+  cat("\nCell type-level network:\n")
+  cat("  Collapsed to cell type-cell type connections:", nrow(celltype_edgelist), "\n")
+
+  # Create cell type vertex data
+  # Get unique cell types from both pre and post
+  all_celltypes <- unique(c(celltype_edgelist$pre_celltype, celltype_edgelist$post_celltype))
+
+  # Determine if each cell type contains Ca-α1T+ neurons and count neurons
+  celltype_vertices <- data.frame(
+    cell_type = all_celltypes,
+    stringsAsFactors = FALSE
+  ) %>%
+    left_join(
+      edgelist_inhibitory %>%
+        group_by(post_celltype) %>%
+        summarise(has_ca_alpha1t = any(post_is_ca), .groups = "drop"),
+      by = c("cell_type" = "post_celltype")
+    ) %>%
+    left_join(neurons_per_celltype, by = "cell_type") %>%
+    mutate(
+      has_ca_alpha1t = ifelse(is.na(has_ca_alpha1t), FALSE, has_ca_alpha1t),
+      n_neurons = ifelse(is.na(n_neurons), 1, n_neurons)  # Default to 1 if unknown
+    )
+
+  # Create igraph object at cell type level
+  g_celltype <- graph_from_data_frame(
+    d = celltype_edgelist %>% select(pre_celltype, post_celltype, mean_norm, total_count, n_neuron_connections),
+    directed = TRUE,
+    vertices = celltype_vertices
+  )
+
+  cat("\nCell type network graph created:\n")
+  cat("  Cell types (vertices):", vcount(g_celltype), "\n")
+  cat("  Cell type connections (edges):", ecount(g_celltype), "\n")
+  cat("  Upstream inhibitory cell types:", sum(!V(g_celltype)$has_ca_alpha1t), "\n")
+  cat("  Ca-α1T+ target cell types:", sum(V(g_celltype)$has_ca_alpha1t), "\n")
+
+  # Calculate node degrees
+  V(g_celltype)$in_degree <- degree(g_celltype, mode = "in")
+  V(g_celltype)$out_degree <- degree(g_celltype, mode = "out")
+  V(g_celltype)$total_degree <- degree(g_celltype, mode = "all")
+
+  cat("\nDegree statistics:\n")
+  cat("  Mean in-degree:", round(mean(V(g_celltype)$in_degree), 2), "\n")
+  cat("  Mean out-degree:", round(mean(V(g_celltype)$out_degree), 2), "\n")
+
+  # Store for plotting
+  g <- g_celltype
+
+} else {
+  cat("No network data available for visualisation\n")
+}
+```
+
+## Plot Network
+
+```{r plot_network, fig.width=14, fig.height=14}
+if (exists("g") && vcount(g) > 0) {
+  # Set node colors based on Ca-α1T expression
+  V(g)$color <- ifelse(V(g)$has_ca_alpha1t, "#E41A1C", "#377EB8")
+  V(g)$color_label <- ifelse(V(g)$has_ca_alpha1t, "Ca-α1T+ cell type", "GABA/Glu input")
+
+  # Set node sizes based on NUMBER OF NEURONS in the cell type
+  # Use sqrt to scale area proportionally to neuron count
+  V(g)$size <- sqrt(V(g)$n_neurons) * 2
+
+  # Set edge widths based on LOG of mean normalised weight
+  # Add small constant to avoid log(0)
+  E(g)$width <- log10(E(g)$mean_norm + 0.001) - min(log10(E(g)$mean_norm + 0.001))
+  E(g)$width <- (E(g)$width / max(E(g)$width)) * 8 + 1  # Scale to 1-9 range
+
+  # Set edge colors based on mean normalised weight using viridis
+  edge_colors <- viridis(100)
+  norm_scaled <- cut(E(g)$mean_norm, breaks = 100, labels = FALSE)
+  E(g)$color <- edge_colors[norm_scaled]
+
+  # Use Fruchterman-Reingold layout for cell type networks
+  set.seed(42)
+  layout_fr <- layout_with_fr(g)
+
+  # Plot with base R graphics
+  par(mar = c(2, 2, 3, 2), bg = "white")
+  plot(g,
+       layout = layout_fr,
+       vertex.color = V(g)$color,
+       vertex.size = 3,#V(g)$size,
+       vertex.label = V(g)$name,  # Show all cell type names
+       vertex.label.cex = 0.7,
+       vertex.label.color = "black",
+       vertex.label.family = "sans",
+       vertex.frame.color = "white",
+       edge.arrow.size = 0.5,
+       edge.arrow.width = 1,
+       edge.width = E(g)$width,
+       edge.color = E(g)$color,
+       edge.curved = 0.2,
+       main = "Inhibitory/Glutamatergic Inputs to Ca-α1T+ Cell Types (FAFB)",
+       sub = paste("Cell type network:", vcount(g), "cell types,", ecount(g),
+                   "connections | Node size = # neurons | Edge width = log(mean norm)")
+  )
+
+  # Add legend
+  legend("topleft",
+         legend = c("Ca-α1T+ cell type", "GABA/Glu input",
+                    "Node size = # neurons", "Edge width = log(mean norm)"),
+         col = c("#E41A1C", "#377EB8", NA, NA),
+         pch = c(19, 19, NA, NA),
+         pt.cex = 2,
+         bty = "n",
+         cex = 1.1)
+
+  # Save as PNG
+  png(file.path(img_dir, "ca_alpha1t_inhibitory_network.png"),
+      width = 14, height = 14, units = "in", res = 300)
+  par(mar = c(2, 2, 3, 2), bg = "white")
+  plot(g,
+       layout = layout_fr,
+       vertex.color = V(g)$color,
+       vertex.size = 3,#V(g)$size,
+       vertex.label = V(g)$name,  # Show all cell type names
+       vertex.label.cex = 0.7,
+       vertex.label.color = "black",
+       vertex.label.family = "sans",
+       vertex.frame.color = "white",
+       edge.arrow.size = 0.5,
+       edge.arrow.width = 1,
+       edge.width = E(g)$width,
+       edge.color = E(g)$color,
+       edge.curved = 0.2,
+       main = "Inhibitory/Glutamatergic Inputs to Ca-α1T+ Cell Types (FAFB)",
+       sub = paste("Cell type network:", vcount(g), "cell types,", ecount(g),
+                   "connections | Node size = # neurons | Edge width = log(mean norm)")
+  )
+  legend("topleft",
+         legend = c("Ca-α1T+ cell type", "GABA/Glu input",
+                    "Node size = # neurons", "Edge width = log(mean norm)"),
+         col = c("#E41A1C", "#377EB8", NA, NA),
+         pch = c(19, 19, NA, NA),
+         pt.cex = 2,
+         bty = "n",
+         cex = 1.1)
+  dev.off()
+
+  cat("\nInhibitory network plot saved to:", file.path(img_dir, "ca_alpha1t_inhibitory_network.png"), "\n")
+}
+```
+
+## Cell Type Composition
+
+```{r plot_cell_types, fig.width=10, fig.height=8}
+if (exists("network_meta") && nrow(network_meta) > 0) {
+  # Count cell types in network, separated by Ca-α1T expression
+  celltype_counts <- network_meta %>%
+    filter(!is.na(cell_type)) %>%
+    count(cell_type, is_ca_alpha1t) %>%
+    arrange(desc(n))
+
+  # Plot cell type composition
+  p_celltypes <- ggplot(celltype_counts,
+                        aes(x = reorder(cell_type, n), y = n, fill = is_ca_alpha1t)) +
+    geom_col() +
+    scale_fill_manual(
+      values = c("FALSE" = "#377EB8", "TRUE" = "#E41A1C"),
+      labels = c("FALSE" = "Partner", "TRUE" = "Ca-α1T+"),
+      name = "Neuron Type"
+    ) +
+    coord_flip() +
+    labs(
+      title = "Cell Types in Ca-α1T+ Network",
+      subtitle = paste("Cell types of", sum(celltype_counts$n), "neurons in the strong connectivity network"),
+      x = "Cell Type",
+      y = "Number of Neurons"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      axis.text = element_text(size = 10),
+      legend.position = "top"
+    )
+
+  save_plot(p_celltypes, "ca_alpha1t_network_celltypes", width = 10, height = 8)
+  ggplotly(p_celltypes)
+}
+```
+
+---
+
+# Summary
+
+In this tutorial, we:
+
+1. ✓ Loaded transcriptomics data for visual system cell types
+2. ✓ Identified cell types with high Ca-α1T expression (≥90th percentile)
+3. ✓ Mapped transcriptomic cell types to FAFB connectome metadata
+4. ✓ Loaded FAFB edgelist and filtered for strong connections
+5. ✓ Created a network graph of Ca-α1T+ neurons and their strongest synaptic partners
+6. ✓ Visualised the network structure and cell type composition
+
+## Key Findings
+
+```{r summary_stats}
+if (exists("network_meta") && exists("edgelist_strong")) {
+  cat("\n=== SUMMARY STATISTICS ===\n\n")
+
+  cat("Transcriptomics:\n")
+  cat("  Cell types with high Ca-α1T (≥90th percentile):", length(high_expressors), "\n")
+
+  cat("\nConnectome mapping:\n")
+  cat("  Ca-α1T+ neurons found in FAFB:", length(ca_alpha1t_ids), "\n")
+
+  cat("\nConnectivity network:\n")
+  cat("  Total neurons in network:", vcount(g), "\n")
+  cat("  Total strong connections:", ecount(g), "\n")
+  cat("  Network density:", round(edge_density(g), 4), "\n")
+
+  cat("\nBiological interpretation:\n")
+  cat("  Ca-α1T is expressed in specific visual system cell types\n")
+  cat("  These neurons form a highly connected subnetwork\n")
+  cat("  T-type calcium channels likely enable graded signaling in these circuits\n")
+}
+```
+
+## Next Steps
+
+Possible extensions of this analysis:
+- Compare Ca-α1T+ networks across different datasets (BANC, maleCNS)
+- Analyse other ion channel genes (e.g., Ca-α1D, other VGCCs)
+- Investigate functional implications using neurotransmitter predictions
+- Examine morphological properties of Ca-α1T+ neurons
+- Compare expression patterns across developmental stages
+
+## References
+
+- **Transcriptomics data**: Özel et al. (2023) bioRxiv. [Link](https://www.biorxiv.org/content/10.1101/2023.11.24.568537v4)
+- **Ca-α1T gene**: FlyBase [FBgn0264386](https://flybase.org/reports/FBgn0264386)
+- **FAFB connectome**: Dorkenwald et al. (2024) Nature; Schlegel et al. (2024) Nature
+
+---
+
+**Tutorial complete!** 🎉

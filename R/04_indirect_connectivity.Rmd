@@ -181,6 +181,16 @@ cat("MB dopamine types (n=", length(mb_da_types), "):\n")
 cat(paste(head(mb_da_types, 10), collapse = ", "), "\n")
 ```
 
+Now, in this case, we are not interested in information that transers from Kenyon cells to dopamine neurons. Kenyon cells are the neurons the dopamine cell's "teach", and while their influence is important for the network it muddies the waters in terms if working out what sensory signals matter for teaching. We can do this as so:
+
+```{r edgelist_filtered_no_kc}
+kc_ids <-  meta %>%
+  filter(grepl("^KC",cell_type)) %>%
+  distinct(pull(!!sym(dataset_id)))
+edgelist_filtered_no_kc <- edgelist_filtered %>%
+  filter(!pre %in% kc_ids, !post %in% kc_ids)
+```
+
 ### Set Up Influence Calculator
 
 ```{r setup_influence}
@@ -190,7 +200,7 @@ cat(paste(head(mb_da_types, 10), collapse = ", "), "\n")
 # - meta with root_id column
 
 # Check edgelist column names
-edgelist_cols <- colnames(edgelist_filtered)
+edgelist_cols <- colnames(edgelist_filtered_no_kc)
 cat("Edgelist columns:", paste(edgelist_cols, collapse = ", "), "\n")
 
 # Determine pre/post column names and rename if needed
