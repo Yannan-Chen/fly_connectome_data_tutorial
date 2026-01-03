@@ -205,7 +205,7 @@ cat("Edgelist columns:", paste(edgelist_cols, collapse = ", "), "\n")
 
 # Determine pre/post column names and rename if needed
 if ("pre" %in% edgelist_cols && "post" %in% edgelist_cols) {
-  edgelist_for_ic <- edgelist_filtered
+  edgelist_for_ic <- edgelist_filtered_no_kc
 } else {
   # Need to rename columns
   pre_col <- paste0("pre_", dataset_id)
