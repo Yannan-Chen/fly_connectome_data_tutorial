@@ -184,11 +184,11 @@ cat(paste(head(mb_da_types, 10), collapse = ", "), "\n")
 Now, in this case, we are not interested in information that transers from Kenyon cells to dopamine neurons. Kenyon cells are the neurons the dopamine cell's "teach", and while their influence is important for the network it muddies the waters in terms if working out what sensory signals matter for teaching. We can do this as so:
 
 ```{r edgelist_filtered_no_kc}
-kc_ids <-  meta %>%
-  filter(grepl("^KC",cell_type)) %>%
-  distinct(pull(!!sym(dataset_id)))
+mb_ids <-  meta %>%
+  filter(grepl("^KC|^MBON|^APL|^DPM",cell_type)) %>%
+  pull(!!sym(dataset_id))
 edgelist_filtered_no_kc <- edgelist_filtered %>%
-  filter(!pre %in% kc_ids, !post %in% kc_ids)
+  filter(!pre %in% mb_ids, !post %in% mb_ids)
 ```
 
 ### Set Up Influence Calculator
@@ -321,7 +321,7 @@ Let's create an interactive heatmap showing non-olfactory influence from sensory
 ```{r influence_heatmap, fig.width=12, fig.height=10}
 # Create a matrix for heatmap
 influence_matrix <- all_influence_scores_ct %>%
-  filter(!grepl("olfactory_receptor_neuron",source)) %>%
+  # filter(!grepl("olfactory_receptor_neuron",source)) %>%
   select(source, target_type, adjusted_influence) %>%
   pivot_wider(names_from = target_type, values_from = adjusted_influence, values_fill = 0) %>%
   column_to_rownames("source") %>%
